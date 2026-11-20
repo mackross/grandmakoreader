@@ -1,0 +1,499 @@
+-- What request does each Api.* call actually issue, and what does it make of the answer?
+--
+-- Around a dozen of these functions are the same twenty lines with different nouns: fetch a URL
+-- from Config, attach the session cookie, call makeHttpRequest, then check the error, the body,
+-- the JSON and the API's own success flag in turn. That repetition is worth collapsing, but
+-- until now none of it was covered -- makeHttpRequest was tested and its callers were not -- so
+-- there was nothing to say a consolidation had preserved their behaviour.
+--
+-- This pins the behaviour down: which Config getter supplies the URL and the timeout, whether
+-- the session cookie is attached, which flags are set, and what each of the four failure paths
+-- returns. It is deliberately about observable behaviour rather than structure, so it holds
+-- across a refactor rather than describing one particular shape of code.
+
+local PLUGIN = assert(arg[1], "usage: luajit api_wrappers_harness.lua <plugin-root> <luasocket-src>")
+local LUASOCKET = assert(arg[2], "usage: luajit api_wrappers_harness.lua <plugin-root> <luasocket-src>")
+
+package.path = PLUGIN .. "/?.lua;" .. package.path
+local support = dofile(PLUGIN .. "/test/support.lua")
+support.preload_socket(LUASOCKET)
+support.preload_koreader_stubs()
+local r = support.reporter()
+
+-- Bodies are named rather than parsed. A JSON parser written for a harness is a second thing
+-- that can be wrong -- the first draft of this one mangled arrays and reported four plugin
+-- failures that were its own -- and nothing here is testing a decoder anyway.
+local BODIES = {
+    books      = { success = 1, books = { { id = 1, title = "T", author = "A" } } },
+    -- The paginated calls reject a response with no pagination block, so they need their own.
+    -- "current", not "current_page": the paging hint compares it against the page that was
+    -- asked for, so the field name matters.
+    books_paged = { success = 1, books = { { id = 1, title = "T", author = "A" } },
+                    pagination = { total_pages = 3, current = 1 } },
+    books_last_page = { success = 1, books = { { id = 1, title = "T", author = "A" } },
+                        pagination = { total_pages = 1, current = 1 } },
+    -- Same, but with pagination as a string. getDownloadedBooks type-checks it and refuses;
+    -- getFavoriteBooks only tests truthiness and accepts. That difference is real, not an
+    -- oversight of this harness, and collapsing these two would erase it.
+    books_paged_loose = { success = 1, books = { { id = 1, title = "T", author = "A" } },
+                          pagination = "3" },
+    book       = { success = 1, book = { id = 1, title = "T", author = "A" } },
+    -- Cover URLs as the downloaded-books list sends them: a good one, one with the empty
+    -- collection folder that list uses for every book, and the coverless placeholder.
+    books_covers = { success = 1, pagination = { total_pages = 1, current = 1 }, books = {
+        { id = 1, title = "T", author = "A",
+          cover = "https://covers.example/covers299/collections/userbooks/a.jpg" },
+        { id = 2, title = "T", author = "A",
+          cover = "https://covers.example/covers299/collections//b.jpg" },
+        { id = 3, title = "T", author = "A", cover = "/img/cover-not-exists.png" },
+    } },
+    -- A filtered (language/format) search answer with nothing in it.
+    books_none = { success = 1, books = {} },
+    -- A popularity search as the server answers it: 30 a page, and a total it stops at.
+    search_500 = { success = 1, books = { { id = 1, title = "T", author = "A" } },
+                   pagination = { limit = 30, current = 1, total_items = 500, total_pages = 17 } },
+    ok         = { success = 1 },
+    api_failed = { success = 0, message = "nope" },
+    -- Shaped like /papi/booklist responses, values made up. The booklist endpoints put their text in error.
+    api_failed_error = { success = 0, error = "Booklist not found" },
+    booklists_missing = { success = 1 },
+    booklists = { success = 1, list = {
+        { id = 1001, user_id = 1, title = "Test", books_count = 22, description = "", public = true },
+        { id = 1002, user_id = 1, title = "", books_count = 0, public = true },
+        { id = "not-a-number", title = "Broken", books_count = 1 },
+    } },
+    booklist_books_p1 = { success = 1, books = {
+        { book = { id = 101, hash = "abc123", title = "Amerika", author = "Franc Kafka",
+                   extension = "epub", dl = "/dl/fakeToken1", href = "/book/fakeHref1/amerika.html",
+                   filesizeString = "268 KB", language = "serbian", year = 2016,
+                   cover = "https://covers.example/1.jpg" },
+          readlist_books_id = 201, _isUserSavedBook = false },
+        { book = { id = 102, hash = "def456", title = "Proces", author = "Franc Kafka",
+                   extension = "epub", dl = "/dl/fakeToken2", cover = "/img/cover-not-exists.png" },
+          readlist_books_id = 202, _isUserSavedBook = false },
+        { readlist_books_id = 1, book = "not-a-table" },
+    }, pagination = { limit = 20, current = 1, before = false, next = 2, total_items = 22, total_pages = 2 } },
+    booklist_books_p2 = { success = 1, books = {
+        { book = { id = 1, hash = "aaa", title = "Last", author = "A", extension = "epub" } },
+    }, pagination = { limit = 20, current = 2, before = 1, next = false, total_items = 22, total_pages = 2 } },
+    booklist_books_empty = { success = 1, books = {},
+        pagination = { limit = 20, current = 1, before = false, next = false, total_items = 0, total_pages = 0 } },
+}
+local function unpaged_booklist_books(n)
+    local books = {}
+    for i = 1, n do books[i] = { book = { id = i, hash = "h" .. i, title = "T", author = "A" } } end
+    return { success = 1, books = books }
+end
+BODIES.booklist_books_full_unpaged = unpaged_booklist_books(20)
+BODIES.booklist_books_short_unpaged = unpaged_booklist_books(3)
+package.preload["json"] = function()
+    return {
+        decode = setmetatable({ simple = {} }, { __call = function(_, s)
+            local v = BODIES[s]
+            if not v then error("parse error: " .. tostring(s)) end
+            return v
+        end }),
+    }
+end
+
+-- Any Config.getFooUrl() answers with a URL naming itself, and any Config.getFooTimeout() with a
+-- recognisable pair, so a wrapper reaching for the wrong one is visible rather than merely wrong.
+local asked
+package.preload["zlibrary.config"] = function()
+    return setmetatable({ getUserAgent = function() return "test-agent" end, SEARCH_RESULTS_LIMIT = 30,
+                          BOOKLIST_PAGE_SIZE = 20 }, {
+        __index = function(_, key)
+            return function()
+                asked[#asked + 1] = key
+                if key:match("Url$") then return "https://z.example/eapi/" .. key end
+                if key:match("Timeout$") then return { 11, 22 } end
+                return nil
+            end
+        end,
+    })
+end
+
+-- api_transport.lua requires socket.http at load; nothing here reaches the real transport, since
+-- makeHttpRequest is replaced below, but the require still has to resolve.
+package.preload["socket.http"] = function()
+    return { request = function() error("the transport is stubbed in this harness") end }
+end
+
+local Api = require("zlibrary.api")
+
+-- Intercept the transport. The wrappers call Api.makeHttpRequest through the module table, so
+-- replacing it here captures exactly what each one would have put on the wire.
+local sent, reply
+local real_makeHttpRequest = Api.makeHttpRequest
+Api.makeHttpRequest = function(options)
+    sent = options
+    return reply
+end
+
+local function call(fn, args, response)
+    asked, sent = {}, nil
+    reply = response
+    local ok, result = pcall(Api[fn], unpack(args))
+    return ok and result or { error = "RAISED: " .. tostring(result) }, sent, asked
+end
+
+local function asked_for(list, name)
+    for _, k in ipairs(list) do if k == name then return true end end
+    return false
+end
+
+local UID, UKEY = "42", "secret"
+local COOKIE = "remix_userid=42; remix_userkey=secret"
+
+-- name, args, the Config getters it must use, the field it reads out of a good response
+local WRAPPERS = {
+    { "getRecommendedBooks", { UID, UKEY }, "getRecommendedBooksUrl", "getRecommendedTimeout",
+      "books", "books" },
+    { "getMostPopularBooks", { UID, UKEY }, "getMostPopularBooksUrl", "getPopularTimeout",
+      "books", "books" },
+    { "getDownloadedBooks", { UID, UKEY, 1, "date" }, "getDownloadedBooksUrl", "getPopularTimeout",
+      "books_paged", "books" },
+    { "getFavoriteBooks", { UID, UKEY, 1, "date" }, "getFavoriteBooksUrl", "getPopularTimeout",
+      "books_paged", "books" },
+    { "getBooklists", { UID, UKEY }, "getBooklistsUrl", "getPopularTimeout",
+      "booklists", "booklists" },
+    { "getBooklistBooks", { UID, UKEY, 1001, 1 }, "getBooklistBooksUrl", "getPopularTimeout",
+      "booklist_books_p1", "books" },
+}
+
+for _, w in ipairs(WRAPPERS) do
+    local name, args, url_getter, timeout_getter, good_body, field = unpack(w)
+
+    -- ---------------------------------------------------------------- the request
+    local _, req, used = call(name, args, { body = good_body })
+    r.check(name .. ": issues a request at all", req ~= nil, "makeHttpRequest was not called")
+    if req then
+        r.check(name .. ": takes its URL from " .. url_getter,
+                asked_for(used, url_getter), "asked for: " .. table.concat(used, ", "))
+        r.check(name .. ": takes its timeout from " .. timeout_getter,
+                asked_for(used, timeout_getter), "asked for: " .. table.concat(used, ", "))
+        r.check(name .. ": sends the session cookie",
+                req.headers and req.headers["Cookie"] == COOKIE,
+                "Cookie: " .. tostring(req.headers and req.headers["Cookie"]))
+        r.check(name .. ": identifies itself",
+                req.headers and req.headers["User-Agent"] == "test-agent",
+                "UA: " .. tostring(req.headers and req.headers["User-Agent"]))
+        r.check(name .. ": can rebuild its URL after a mirror move",
+                type(req.onRedirect) == "function" or type(req.onRedirect) == "table",
+                "onRedirect = " .. type(req.onRedirect))
+    end
+
+    -- ---------------------------------------------------------------- no credentials
+    local no_cred_args = {}
+    for i, a in ipairs(args) do no_cred_args[i] = a end
+    no_cred_args[1], no_cred_args[2] = nil, nil
+    local _, req2 = call(name, no_cred_args, { body = good_body })
+    r.check(name .. ": omits the cookie when signed out",
+            req2 == nil or not (req2.headers and req2.headers["Cookie"]),
+            "sent: " .. tostring(req2 and req2.headers and req2.headers["Cookie"]))
+
+    -- ---------------------------------------------------------------- the four failures
+    local res = call(name, args, { error = "boom" })
+    r.check(name .. ": passes a transport error through", res.error ~= nil, "no error returned")
+
+    res = call(name, args, {})
+    r.check(name .. ": reports a missing body", res.error ~= nil, "no error for an empty response")
+
+    res = call(name, args, { body = "unparseable" })
+    r.check(name .. ": reports an undecodable body", res.error ~= nil, "no error for bad JSON")
+
+    res = call(name, args, { body = "api_failed" })
+    r.check(name .. ": reports an API failure", res.error ~= nil, "no error for success=0")
+
+    -- ---------------------------------------------------------------- the happy path
+    res = call(name, args, { body = good_body })
+    r.check(name .. ": returns " .. field .. " on success",
+            res[field] ~= nil and res.error == nil,
+            "got error=" .. tostring(res.error))
+end
+
+-- Every authenticated JSON call builds the same header table. Twelve sites wrote it out by hand,
+-- two of them with the keys in a different order, which in Lua is the same table. Assert the
+-- shape on all of them rather than only the four exercised above, so consolidating that block
+-- cannot quietly change what any one of them sends. Only the request matters here, so a canned
+-- transport error is answer enough.
+local AUTHED = {
+    { "getRecommendedBooks", { UID, UKEY } },
+    { "getMostPopularBooks", { UID, UKEY } },
+    { "getBookDetails", { UID, UKEY, "1", "h" } },
+    { "getDownloadLink", { UID, UKEY, "1", "h" } },
+    { "getSimilarBooks", { UID, UKEY, "1", "h" } },
+    { "getDownloadedBooks", { UID, UKEY, 1, "date" } },
+    { "getFavoriteBooks", { UID, UKEY, 1, "date" } },
+    { "deleteDownloadedBook", { UID, UKEY, { id = "1", hash = "h" } } },
+    { "unfavoriteBook", { UID, UKEY, { id = "1", hash = "h" } } },
+    { "getDownloadQuotaStatus", { UID, UKEY } },
+    { "getFavoriteBookIds", { UID, UKEY } },
+    { "favoriteBook", { UID, UKEY, { id = "1", hash = "h" } } },
+    { "getBooklists", { UID, UKEY } },
+    { "getBooklistBooks", { UID, UKEY, 1001, 1 } },
+}
+for _, w in ipairs(AUTHED) do
+    local name, args = w[1], w[2]
+    local _, req = call(name, args, { error = "stop here" })
+    local h = req and req.headers or {}
+    r.check(name .. ": header block is the standard one",
+            h["Cookie"] == COOKIE
+                and h["User-Agent"] == "test-agent"
+                and h["Content-Type"] == "application/x-www-form-urlencoded",
+            req and string.format("Cookie=%s UA=%s CT=%s", tostring(h["Cookie"]),
+                tostring(h["User-Agent"]), tostring(h["Content-Type"])) or "no request issued")
+end
+
+-- The paginated pair return a paging hint alongside the books.
+for _, name in ipairs({ "getDownloadedBooks", "getFavoriteBooks" }) do
+    local res = call(name, { UID, UKEY, 1, "date" }, { body = "books_paged" })
+    r.check(name .. ": reports whether more pages follow", res.has_more_results ~= nil,
+            "has_more_results = " .. tostring(res.has_more_results))
+    r.check(name .. ": says more follow when the page is not the last", res.has_more_results == true,
+            "has_more_results = " .. tostring(res.has_more_results))
+    res = call(name, { UID, UKEY, 1, "date" }, { body = "books_last_page" })
+    r.check(name .. ": says no more follow on the last page", not res.has_more_results,
+            "has_more_results = " .. tostring(res.has_more_results))
+    res = call(name, { UID, UKEY, 1, "date" }, { body = "books" })
+    r.check(name .. ": refuses a response with no pagination block", res.error ~= nil,
+            "accepted it")
+end
+
+-- Pinned because it is a genuine difference between two functions that otherwise read alike.
+-- Whichever way a future refactor unifies them, it should be a decision rather than an accident.
+local loose = call("getFavoriteBooks", { UID, UKEY, 1, "date" }, { body = "books_paged_loose" })
+r.check("getFavoriteBooks: accepts a non-table pagination value", loose.error == nil,
+        "error = " .. tostring(loose.error))
+local strict = call("getDownloadedBooks", { UID, UKEY, 1, "date" }, { body = "books_paged_loose" })
+r.check("getDownloadedBooks: requires pagination to be a table", strict.error ~= nil,
+        "accepted a string")
+
+-- A cover URL is only kept when it can be fetched. The downloaded-books list sends every cover with
+-- an empty collection folder, which is always a 404; the menu falls back to cached details instead.
+local covers = call("getDownloadedBooks", { UID, UKEY, 1, "date" }, { body = "books_covers" })
+local cb = covers.books or {}
+r.check("covers: a complete cover URL is kept",
+        cb[1] and cb[1].cover == "https://covers.example/covers299/collections/userbooks/a.jpg",
+        "got " .. tostring(cb[1] and cb[1].cover))
+r.check("covers: one with an empty collection folder is dropped", cb[2] and cb[2].cover == nil,
+        "got " .. tostring(cb[2] and cb[2].cover))
+r.check("covers: the coverless placeholder is dropped", cb[3] and cb[3].cover == nil,
+        "got " .. tostring(cb[3] and cb[3].cover))
+
+-- Booklists: the list of lists, then the books in one list.
+do
+    local res, req = call("getBooklists", { UID, UKEY }, { body = "booklists" })
+    local lists = res.booklists or {}
+    r.check("getBooklists: is a GET", req and req.method == "GET", "method=" .. tostring(req and req.method))
+    r.check("getBooklists: keeps only entries with a numeric id", #lists == 2, "got " .. #lists)
+    r.check("getBooklists: maps title to name and books_count to count",
+            lists[1] and lists[1].id == 1001 and lists[1].name == "Test" and lists[1].count == 22,
+            lists[1] and string.format("id=%s name=%s count=%s", tostring(lists[1].id),
+                tostring(lists[1].name), tostring(lists[1].count)) or "no first list")
+    r.check("getBooklists: a blank title falls back to a placeholder",
+            lists[2] and lists[2].name == "Untitled" and lists[2].count == 0,
+            "name=" .. tostring(lists[2] and lists[2].name))
+
+    res = call("getBooklists", { UID, UKEY }, { body = "booklists_missing" })
+    r.check("getBooklists: a response with no list is an error", res.error ~= nil, "accepted it")
+
+    -- A 401 reaches the wrapper as http_result.error, and the re-login matches on its text.
+    res = call("getBooklists", { UID, UKEY }, { status_code = 401, error = "Please login" })
+    r.check("getBooklists: a signed-out error still reads as an authentication error",
+            Api.isAuthenticationError(res.error), "error = " .. tostring(res.error))
+    res = call("getBooklists", { UID, UKEY }, { body = "api_failed_error" })
+    r.check("getBooklists: surfaces the server's own error text", res.error == "Booklist not found",
+            "error = " .. tostring(res.error))
+end
+
+do
+    local res, req = call("getBooklistBooks", { UID, UKEY, 1001, 1 }, { body = "booklist_books_p1" })
+    r.check("getBooklistBooks: is a POST with an empty body",
+            req and req.method == "POST" and req.body == nil and req.headers["Content-Length"] == "0",
+            req and string.format("method=%s body=%s length=%s", tostring(req.method), tostring(req.body),
+                tostring(req.headers["Content-Length"])) or "no request issued")
+
+    -- A URL here would be fetched as a GET once a 301/302/303 rewrote the method.
+    local next_step = req and type(req.onRedirect) == "function" and req.onRedirect()
+    r.check("getBooklistBooks: a mirror move re-issues the call instead of handing back a URL",
+            type(next_step) == "function", "onRedirect() returned " .. type(next_step))
+    if type(next_step) == "function" then
+        local raw = { body = "booklist_books_p2" }
+        reply = raw
+        local outer = sent
+        local again = next_step({})
+        r.check("getBooklistBooks: the re-issued call is the same POST, with no further redirect hook",
+                sent ~= outer and sent.method == "POST" and not sent.onRedirect,
+                "method=" .. tostring(sent.method) .. " onRedirect=" .. type(sent.onRedirect))
+        r.check("getBooklistBooks: the re-issued call hands back the raw response for the outer one to parse",
+                again == raw, "got " .. type(again))
+    end
+
+    local books = res.books or {}
+    r.check("getBooklistBooks: unwraps each entry's book and skips malformed ones", #books == 2,
+            "got " .. #books)
+    r.check("getBooklistBooks: books carry what details and download need",
+            books[1] and books[1].id == 101 and books[1].hash == "abc123" and books[1].title == "Amerika"
+                and books[1].download == "/dl/fakeToken1" and books[1].format == "epub",
+            books[1] and string.format("id=%s hash=%s download=%s", tostring(books[1].id),
+                tostring(books[1].hash), tostring(books[1].download)) or "no first book")
+    r.check("getBooklistBooks: the relative placeholder cover is dropped", books[2] and books[2].cover == nil,
+            "cover=" .. tostring(books[2] and books[2].cover))
+    r.check("getBooklistBooks: more pages before the last", res.has_more_results == true,
+            "has_more_results=" .. tostring(res.has_more_results))
+
+    res = call("getBooklistBooks", { UID, UKEY, 1001, 2 }, { body = "booklist_books_p2" })
+    r.check("getBooklistBooks: no more on the last page", res.has_more_results == false,
+            "has_more_results=" .. tostring(res.has_more_results))
+
+    res = call("getBooklistBooks", { UID, UKEY, 1002, 1 }, { body = "booklist_books_empty" })
+    r.check("getBooklistBooks: an empty list is no books and no more pages",
+            res.error == nil and type(res.books) == "table" and #res.books == 0 and res.has_more_results == false,
+            "error=" .. tostring(res.error) .. " has_more_results=" .. tostring(res.has_more_results))
+
+    res = call("getBooklistBooks", { UID, UKEY, 1, 1 }, { body = "booklist_books_full_unpaged" })
+    r.check("getBooklistBooks: without pagination, a full page means more may follow",
+            res.has_more_results == true, "has_more_results=" .. tostring(res.has_more_results))
+    res = call("getBooklistBooks", { UID, UKEY, 1, 1 }, { body = "booklist_books_short_unpaged" })
+    r.check("getBooklistBooks: without pagination, a short page is the last",
+            res.has_more_results == false, "has_more_results=" .. tostring(res.has_more_results))
+
+    res = call("getBooklistBooks", { UID, UKEY, 1, 1 }, { status_code = 401, error = "Please login" })
+    r.check("getBooklistBooks: a signed-out error still reads as an authentication error",
+            Api.isAuthenticationError(res.error), "error = " .. tostring(res.error))
+    res = call("getBooklistBooks", { UID, UKEY, 1, 1 }, { body = "api_failed_error" })
+    r.check("getBooklistBooks: surfaces the server's own error text", res.error == "Booklist not found",
+            "error = " .. tostring(res.error))
+end
+
+-- Most popular follows the search-language setting. The most-popular endpoint ignores any
+-- language it is given, so with languages selected the wrapper asks the search endpoint instead:
+-- an empty query in those languages, ordered by popularity. ("*" is refused by the server with
+-- "Search query is incorrect!"; an empty message is what it accepts.)
+local pop, preq, pused = call("getMostPopularBooks", { UID, UKEY }, { body = "books" })
+r.check("getMostPopularBooks: no languages still uses the most-popular endpoint",
+        preq and preq.method == "GET" and asked_for(pused, "getMostPopularBooksUrl")
+            and not asked_for(pused, "getSearchUrl") and not pop.filtered,
+        "method=" .. tostring(preq and preq.method) .. " asked for: " .. table.concat(pused, ", "))
+pop, preq, pused = call("getMostPopularBooks", { UID, UKEY, {} }, { body = "books" })
+r.check("getMostPopularBooks: an empty selection does too",
+        preq and preq.method == "GET" and not asked_for(pused, "getSearchUrl"),
+        "asked for: " .. table.concat(pused, ", "))
+
+pop, preq, pused = call("getMostPopularBooks", { UID, UKEY, { "portuguese", "brazilian" } }, { body = "books" })
+local pbody = preq and preq.body or ""
+r.check("getMostPopularBooks: with languages it searches instead",
+        preq and preq.method == "POST" and asked_for(pused, "getSearchUrl"),
+        "method=" .. tostring(preq and preq.method) .. " asked for: " .. table.concat(pused, ", "))
+r.check("getMostPopularBooks: with an empty query",
+        ("&" .. pbody .. "&"):find("&message=&", 1, true) ~= nil, "body: " .. pbody)
+r.check("getMostPopularBooks: in every selected language",
+        pbody:find("languages[0]=portuguese", 1, true) and pbody:find("languages[1]=brazilian", 1, true),
+        "body: " .. pbody)
+r.check("getMostPopularBooks: ordered by popularity",
+        pbody:find("order=popular", 1, true) ~= nil, "body: " .. pbody)
+r.check("getMostPopularBooks: on the reader's session",
+        preq and preq.headers and preq.headers["Cookie"] == COOKIE,
+        "Cookie: " .. tostring(preq and preq.headers and preq.headers["Cookie"]))
+r.check("getMostPopularBooks: returns the search's books, flagged as filtered",
+        pop.error == nil and type(pop.books) == "table" and #pop.books == 1
+            and pop.filtered == true,
+        "error=" .. tostring(pop.error) .. " books=" .. tostring(pop.books and #pop.books))
+
+pop = call("getMostPopularBooks", { UID, UKEY, { "japanese" } }, { body = "books_none" })
+r.check("getMostPopularBooks: nothing in the selected languages is an empty, flagged list",
+        pop.error == nil and type(pop.books) == "table" and #pop.books == 0
+            and pop.filtered == true,
+        "error=" .. tostring(pop.error))
+pop = call("getMostPopularBooks", { UID, UKEY, { "portuguese" } }, { error = "boom" })
+r.check("getMostPopularBooks: a failed language search passes its error through",
+        pop.error ~= nil and pop.books == nil, "no error returned")
+
+-- The reader's format filter applies too: a reader who only wants EPUBs must not be shown PDFs
+-- in Most popular. Formats alone are enough to switch to the search, since the most-popular
+-- endpoint ignores them just as it ignores languages.
+pop, preq, pused = call("getMostPopularBooks", { UID, UKEY, { "portuguese" }, { "epub", "mobi" } },
+                        { body = "books" })
+pbody = preq and preq.body or ""
+r.check("getMostPopularBooks: with languages and formats, sends every selected format",
+        pbody:find("extensions[0]=epub", 1, true) and pbody:find("extensions[1]=mobi", 1, true)
+            and pbody:find("languages[0]=portuguese", 1, true),
+        "body: " .. pbody)
+pop, preq, pused = call("getMostPopularBooks", { UID, UKEY, {}, { "epub" } }, { body = "books" })
+pbody = preq and preq.body or ""
+r.check("getMostPopularBooks: formats alone also search instead",
+        preq and preq.method == "POST" and asked_for(pused, "getSearchUrl"),
+        "method=" .. tostring(preq and preq.method) .. " asked for: " .. table.concat(pused, ", "))
+r.check("getMostPopularBooks: formats alone send the format, no language, by popularity",
+        pbody:find("extensions[0]=epub", 1, true) and not pbody:find("languages[", 1, true)
+            and pbody:find("order=popular", 1, true) and pop.filtered == true,
+        "body: " .. pbody)
+-- The search pages; fetching only its first page left the tab at 30 books. It asks for the page
+-- it is given, and reports more while the server's total is not reached.
+pop, preq = call("getMostPopularBooks", { UID, UKEY, { "english" }, {}, 2 }, { body = "search_500" })
+pbody = preq and preq.body or ""
+r.check("getMostPopularBooks: asks the search for the page it is given",
+        ("&" .. pbody .. "&"):find("&page=2&", 1, true) ~= nil, "body: " .. pbody)
+r.check("getMostPopularBooks: more pages while the total is not reached",
+        pop.has_more_results == true, "has_more_results=" .. tostring(pop.has_more_results))
+pop = call("getMostPopularBooks", { UID, UKEY, { "english" }, {}, 17 }, { body = "search_500" })
+r.check("getMostPopularBooks: no more once the pages cover the total",
+        pop.has_more_results == false, "has_more_results=" .. tostring(pop.has_more_results))
+pop = call("getMostPopularBooks", { UID, UKEY, { "english" } }, { body = "books" })
+r.check("getMostPopularBooks: without a total, a short page is the last",
+        pop.has_more_results == false, "has_more_results=" .. tostring(pop.has_more_results))
+pop = call("getMostPopularBooks", { UID, UKEY }, { body = "books" })
+r.check("getMostPopularBooks: Z-library's own list never offers more pages",
+        not pop.has_more_results, "has_more_results=" .. tostring(pop.has_more_results))
+
+pop, preq, pused = call("getMostPopularBooks", { UID, UKEY, nil, {} }, { body = "books" })
+r.check("getMostPopularBooks: empty languages and formats keep the most-popular endpoint",
+        preq and preq.method == "GET" and not asked_for(pused, "getSearchUrl") and not pop.filtered,
+        "asked for: " .. table.concat(pused, ", "))
+
+-- The tab's cache entry is keyed by both selections, so changing either never serves a list
+-- cached under the old one. Run against the real definition, pulled out of config_prefs.lua.
+do
+    local settings = {}
+    local ConfigStub = {
+        getSearchLanguages = function() return settings.languages or {} end,
+        getSearchExtensions = function() return settings.extensions or {} end,
+    }
+    local block = support.extract_block(PLUGIN .. "/zlibrary/config_prefs.lua",
+        "\nfunction Config%.getMostPopularCacheKey%(%).-\nend\n")
+    local chunk = assert(loadstring(block, "=getMostPopularCacheKey"))
+    setfenv(chunk, { Config = ConfigStub, type = type, ipairs = ipairs, tostring = tostring,
+                     table = table })
+    chunk()
+    local key = ConfigStub.getMostPopularCacheKey
+    local function with(langs, exts) settings.languages, settings.extensions = langs, exts; return key() end
+
+    r.check("getMostPopularCacheKey: no selection keeps the plain key", with({}, {}) == "popular",
+            with({}, {}))
+    r.check("getMostPopularCacheKey: formats change the key",
+            with({}, { "epub" }) ~= "popular" and with({}, { "epub" }) ~= with({}, { "pdf" }),
+            with({}, { "epub" }) .. " / " .. with({}, { "pdf" }))
+    r.check("getMostPopularCacheKey: the same languages with different formats differ",
+            with({ "portuguese" }, { "epub" }) ~= with({ "portuguese" }, {}),
+            with({ "portuguese" }, { "epub" }))
+    r.check("getMostPopularCacheKey: a language and a format of the same name do not collide",
+            with({ "x" }, {}) ~= with({}, { "x" }), with({ "x" }, {}))
+    r.check("getMostPopularCacheKey: selection order does not matter",
+            with({ "b", "a" }, { "pdf", "epub" }) == with({ "a", "b" }, { "epub", "pdf" }),
+            with({ "b", "a" }, { "pdf", "epub" }))
+end
+
+-- The outliers are asserted only where they differ, since their whole point is differing.
+local _, req = call("getBookDetails", { UID, UKEY, "1", "h" }, { body = "book" })
+r.check("getBookDetails: retries a stalled request", req and req.retry_on_stall == true,
+        "retry_on_stall = " .. tostring(req and req.retry_on_stall))
+
+_, req = call("healthCheck", { "https://z.example" }, { status_code = 200, body = "ok" })
+r.check("healthCheck: does not consult the pinned redirect target",
+        req and req.skipRedirectCache ~= nil, "skipRedirectCache = " .. tostring(req and req.skipRedirectCache))
+r.check("healthCheck: sends no session cookie",
+        req and not (req.headers and req.headers["Cookie"]), "sent a cookie")
+
+Api.makeHttpRequest = real_makeHttpRequest
+r.finish()

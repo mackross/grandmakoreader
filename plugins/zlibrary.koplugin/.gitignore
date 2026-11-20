@@ -1,0 +1,7 @@
+.idea
+scripts/
+.DS_Store
+.vscode/
+# Python bytecode from the test harnesses
+__pycache__/
+*.pyc

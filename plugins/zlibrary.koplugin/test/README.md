@@ -1,0 +1,143 @@
+# Harnesses
+
+Regression tests for the parts of the plugin that are awkward to check by hand: the HTTP
+transport, the retry dialog, the gettext shim, and the glyphs the UI asks fonts for. They run
+offline against a scripted server, so they need no z-library account, no network, and no device.
+
+```sh
+./test/run.sh              # everything
+./test/run.sh redirect     # only harnesses whose name matches
+./test/run.sh --list       # what each one covers, from its opening comment; takes a filter too
+```
+
+Exits non-zero if anything fails, so it works as a pre-push check.
+
+## Requirements
+
+A **built KOReader checkout**, or an **installed KOReader** — the directory holding `reader.lua`,
+with `luajit` beside it. Installing is the quicker route: nothing to compile. The plugin targets KOReader's LuaJIT, which is Lua 5.1, and the
+harnesses themselves use `loadstring` and `setfenv` to compile file-local functions out of the
+source — neither exists in a system Lua 5.4, so running there produces failures that say nothing
+about the plugin. The harnesses also borrow KOReader's LuaSocket for real URL parsing and its
+bundled fonts for the glyph check.
+
+Point `run.sh` at yours in whichever way suits. It takes the first that applies:
+
+1. `KOREADER_DIR` in the environment, for a one-off:
+   ```sh
+   KOREADER_DIR=/path/to/koreader ./test/run.sh
+   ```
+2. `scripts/test-env.sh`, for a path you do not want to keep retyping:
+   ```sh
+   echo 'KOREADER_DIR="$HOME/src/koreader"' > scripts/test-env.sh
+   ```
+   `scripts/` is gitignored, so this stays on your machine and out of the repository. The file
+   is sourced by `run.sh`, so it is shell, not a config format.
+3. Failing both, it looks in `~/Documents/Dev/koreader-git`, `~/koreader`, and beside this
+   repository.
+
+If none of those find a build, `run.sh` says so and exits 2 rather than failing obscurely.
+
+An install has to be a desktop one: a device package's LuaJIT does not run on your machine. On
+NixOS, or anywhere with Nix, nixpkgs has one prebuilt:
+
+```sh
+echo 'KOREADER_DIR=$(nix build --no-link --print-out-paths nixpkgs#koreader)/lib/koreader' > scripts/test-env.sh
+```
+
+Elsewhere, the release's AppImage or `.deb` for your machine's architecture works: point
+`KOREADER_DIR` at `squashfs-root/usr/lib/koreader` once the AppImage is extracted
+(`--appimage-extract`), or at `/usr/lib/koreader` once the `.deb` is installed.
+
+## What each one covers
+
+A selection, with more detail than the opening comments that `--list` prints.
+
+| Harness | Covers |
+| --- | --- |
+| `redirect_resolve_harness.lua` | Which `Location` shapes resolve, and to what. Relative, root-relative, protocol-relative, same-host, cross-host, 301/302/303/307/308. Also that `real_url_base` — the signal that pins a new base URL — is set only for a genuine cross-host move. |
+| `redirect_follow_harness.lua` | What `makeHttpRequest` does with them: multi-hop chains, POST body replay, method conversion per RFC, loop termination, cookie handling, that `onRedirect` still owns mirror moves, and that nothing is followed from `https` down to `http`. |
+| `bot_challenge_harness.lua` | Recognising a "verifying your browser" interstitial, and — as importantly — not mistaking a JSON API error, an nginx error page, or a book description for one — including JSON whose HTML descriptions and titles happen to contain a marker phrase. |
+| `file_download_harness.lua` | Downloading a URL into a file, for covers and the OTA archive: on a connect-time failure or a non-200 answer the handle is closed before the partial file is removed, the HTTP status is handed back when there is one (the cover preloader stops retrying on 404/410), and a 200 removes nothing. |
+| `retry_message_harness.lua` | That the dialog classifies a failure from the raw error string, opens for the kinds it should, offers auto-discovery only where switching mirrors would help, and says something true and distinct for each. |
+| `cancellable_run_harness.lua` | That a cancellable request routes its outcome to exactly one callback: a finished child behaves like `AsyncHelper.run` (a result carrying `.error`, or a crash, goes to `on_error`), a dismiss goes to `on_cancel` with no retry dialog, a fork failure falls back to the in-process run instead of being reported as a cancellation, and a child that ends without a usable answer is a retryable network failure — not re-run in-process. |
+| `ota_update_harness.lua` | The updater: version comparison, asset-name sanitising, and the install on a real filesystem with real archives (needs `zip` and `unzip`) — a good archive replaces the plugin whole and keeps the reader's credentials file; a corrupt, truncated or incomplete one, or a failed swap, leaves the installed release untouched; a linked development install is refused; the check and download run in a cancellable child. |
+| `log_redaction_harness.lua` | That a signed download link's query never reaches the log on any path through `makeHttpRequest` or `downloadBook`, and that search queries stay below `info`. |
+| `favorite_ids_harness.lua` | That the favourite button's id list covers every page of favourites (up to a bound), fails rather than return a partial list, and that an empty list counts as cached. |
+| `download_limit_harness.lua` | That a spent download quota is recognised under a translation, by matching `Api.DOWNLOAD_LIMIT_HTML_TEXT` rather than the English text. |
+| `view_settings_harness.lua` | That view settings live in the persistent settings file: a stored setting wins over the legacy runtime-cache entry, a legacy entry is migrated once (saved, then removed from the cache), a fresh install writes nothing, and `setViewSettings` leaves the settings file as the only source of truth. |
+| `getplural_harness.lua` | That loading the plugin's catalogue leaves KOReader's own gettext globals as it found them. |
+| `rtl_fallback_harness.lua` | That under an RTL UI language — where bidi wraps untranslated strings in LTR isolate marks — a missing plugin translation still falls back to KOReader's own translation, and that `pgettext`/`ngettext`/`npgettext` query the plugin's catalogue rather than only KOReader's. |
+| `timeout_keys_harness.lua` | That every `operation_key` at a call site resolves to a real timeout getter. A typo yields no hint rather than an error, which is invisible at runtime. |
+| `module_graph_harness.lua` | That the plugin's modules form no require cycle, counting requires wherever they appear (a deferred one is still a cycle). Reads `main.lua` and every `zlibrary/*.lua` by listing the folder, and that `cache` and `gettext` stay leaves. |
+| `ui_surface_harness.lua` | That the `Ui` table still defines the 44 functions the unsplit `ui.lua` did (recorded 2026-11-10), across `ui.lua` and its `ui_*` parts (`support.ui_files`): none missing, none defined twice, and none of the private helpers in `ui_shared`/`ui_pickers` put on `Ui`. |
+| `bookdetails_surface_harness.lua` | That the book details dialog still defines the 20 methods the unsplit `bookdetails_dialog.lua` did (recorded 2026-11-13, plus the six `_buildContent` was split into), across the entry point and its `bookdetails_*` parts: none missing, none defined twice, none added; that the entry point requires every part in the folder; and that it still returns `showBookDetails` and `BookDetailsDialog`. |
+| `bookdetails_content_harness.lua` | What the details dialog builds above its buttons, on stand-in widgets, since the emulator can't open the screen without an account: the header rows in order, which are tappable and reachable by keys, the close X on touch screens only, and which text section fills the rest. `ZL_DUMP=<file>` writes every case's widget tree, to diff before and after a layout change. |
+| `plugin_surface_harness.lua` | That the plugin class still defines the 32 methods the unsplit `main.lua` did (recorded 2026-11-10), across `main.lua` and the `plugin_*` parts it mixes in: none missing, none defined twice, none new, and every `plugin_*.lua` in the folder named in `main.lua`'s mixin list. |
+| `api_surface_harness.lua` | That the `zlibrary.api` facade exposes exactly the fields the unsplit `api.lua` did (33, recorded 2026-11-10), with the same types: nothing left behind by the split into `api_core`/`_transport`/`_login`/`_books`/`_downloads`/`_account`/`_mirrors`, and none of the helpers in `api_shared` leaked onto `Api`. |
+| `config_surface_harness.lua` | That the `zlibrary.config` facade exposes exactly the fields the unsplit `config.lua` did (139, recorded 2026-11-10), with the same types: nothing left behind by the split into `config_core`/`_catalog`/`_mirrors`/`_urls`/`_account`/`_prefs`, nothing duplicated, and only `_getLuaSettings` added on purpose. |
+| `base_url_harness.lua` | The base URL end to end against the real `zlibrary.config` (`config_core`, `config_mirrors`, `config_urls`): the default seed has no trailing slash, `setAndValidateBaseUrl` keeps accepting bare/schemed/slashed hosts but refuses paths, queries, fragments and credentials, `saveSetting` trims strings except the password key, and the legacy-settings migration runs on any legacy key and flushes `G_reader_settings`. |
+| `loading_message_harness.lua` | That a loading message builds with one `InfoMessage:init` call, under KOReader's real `InfoMessage`, even when another plugin overrides `InfoMessage.init` to impose its own font the way appearance.koplugin does. |
+| `glyph_coverage_check.py` | That every non-ASCII codepoint the plugin can display — `\u{...}` escapes and literal UTF-8 alike — maps to a real glyph in some bundled font. Excludes U+FFF1–FFF3, which are `textboxwidget` control markers rather than glyphs. |
+
+## Conventions
+
+Each `*_harness.lua` is invoked as `luajit <harness> <plugin-root> <luasocket-src> <koreader-root>`
+and each `*_check.py` as `python3 <check> <plugin-root> <koreader-root>`. Drop a new file matching
+either pattern into this directory and `run.sh` picks it up.
+
+`support.lua` holds the shared pieces: the pass/fail reporter, the KOReader module stubs, and
+`extract_function` / `extract_block`.
+
+Those last two are the important convention. Several of the functions under test are file-local
+and cannot be required, so the harnesses **pull them out of the source and compile them** rather
+than working from a copy. A copied function keeps passing after the original changes, which is
+the failure mode that matters most here — a green suite that is no longer testing the shipped
+code.
+
+## Why these exist
+
+Each was written against a real bug, and each fails against the commit before its fix:
+
+- Two users reported `HTTP Error: 307` on sign-in. Only absolute cross-host redirects were
+  followed, so an ordinary `http` → `https` hop on the same host was refused.
+- Fixing that introduced a worse bug: a mirror redirecting to itself was chased five times,
+  taking seconds and five requests against a free service, where the old code failed in one.
+- A POST replayed across a redirect sent an empty body while still advertising the original
+  `Content-Length` — the server would have seen a blank sign-in with nothing in any log to say
+  why.
+- The api layer produced a correct, actionable error for a walled mirror and the dialog
+  discarded it, telling users the failure was "temporary" when it was permanent. The redirect
+  harnesses could not catch that: it lived one layer up, in `ui.lua`.
+- Two icons pointed at codepoints no bundled font carries and drew as empty boxes. A third
+  turned up when this check was widened to literal UTF-8: the Telugu language name in the
+  search-language list, which no bundled font covers at all.
+- A walled mirror was reported as a bare `HTTP Error: 513` instead of a message naming the host
+  and pointing at another server.
+- Loading the plugin's catalogue left KOReader's own gettext globals altered: its plural
+  selector kept running the rule from the plugin's `.mo` for the rest of the session.
+- Under an RTL UI language (the plugin ships `ar/`), any string the plugin had not translated
+  showed as English even when KOReader had a translation: bidi wraps untranslated strings in
+  LTR isolate marks, so the shim's raw-msgid comparison never matched and its fallback never
+  fired. The same shim's `pgettext`/`ngettext`/`npgettext` could never serve a plugin
+  translation at all — the deep-copied functions still pointed at KOReader's global catalogue.
+- With appearance.koplugin installed, opening Most popular crashed KOReader with a stack
+  overflow. The loading message asked for `force_one_line`, which InfoMessage meets by shrinking
+  its font and re-running `init`; appearance.koplugin reapplies its font on every `init`, so the
+  shrinking never took and `init` recursed until the stack ran out.
+
+## Not covered
+
+Known gaps, listed so the suite is not mistaken for more than it is:
+
+- **A live mirror.** The network is stubbed throughout, so nothing here shows the plugin works
+  against a real server. That still needs a device and an account.
+- **`retry_on_stall`.** The retry-once-on-a-silent-server path in `makeHttpRequest` has no
+  coverage; every guard in it could be deleted with the suite still green.
+- **The redirect-target cache** in `config_mirrors.lua` (`setCacheRealUrl`, `clearCacheRealUrlIfPinned`,
+  the TTL). The harnesses stub it, so only the fact that pinning is *called* is checked, not
+  that it stores or expires correctly.
+- **A caller-supplied `options.source`.** Bodies are replayed correctly when passed as
+  `options.body`; a caller passing a raw ltn12 source would still have it drained on the first
+  attempt and send an empty body on a retry. Nothing currently does, and nothing stops it.
+- **CI.** These do not run there, as the runner needs a built KOReader checkout.

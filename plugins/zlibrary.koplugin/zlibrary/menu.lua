@@ -1,0 +1,389 @@
+local NetworkMgr = require("ui/network/manager")
+local Font = require("ui/font")
+local Screen = require("device").screen
+local CenterContainer = require("ui/widget/container/centercontainer")
+local FrameContainer = require("ui/widget/container/framecontainer")
+local TextBoxWidget = require("ui/widget/textboxwidget")
+local TextWidget = require("ui/widget/textwidget")
+local RenderText = require("ui/rendertext")
+local ImageWidget = require("ui/widget/imagewidget")
+local util = require("util")
+local UIManager = require("ui/uimanager") 
+local Geom = require("ui/geometry")
+local Size = require("ui/size")
+local logger = require("logger")
+local Menu = require("ui/widget/menu")
+local PreLoader = require("zlibrary.preloader").Preloader
+local PreHelper = require("zlibrary.preloader").helper
+local AsyncHelper = require("zlibrary.async_helper")
+local Api = require("zlibrary.api")
+local Cache = require("zlibrary.cache")
+local BookRow = require("zlibrary.book_row")
+
+local M = Menu:extend{
+    _cover_channel = nil,
+    _debounce_timer_cancel = nil,
+    _last_page_summary = nil,
+    _is_closed = nil,
+    list_per_page = nil,
+    show_cover = nil,
+    is_enable_shortcut = false,
+}
+-- fix no_title = true koreader crash
+function M:mergeTitleBarIntoLayout()
+    if self.no_title then 
+        return
+    end
+   Menu.mergeTitleBarIntoLayout(self)
+end
+function M:init()
+    self._is_closed = false
+    Menu.init(self)
+    if self.show_cover then
+        PreLoader.getFavoriteBookIds()
+    end
+end
+
+-- A list item can arrive without a usable cover URL -- every one in the downloaded-books list does
+-- (see _usableCoverUrl in api.lua) -- while the book's details, cached for a week once the reader
+-- has opened it, carry the right one. Use that instead of asking the API: fetching details for every
+-- visible book is the burst it tarpits (see the note where covers are collected below).
+local function _cachedDetailsCover(book_hash)
+    local details = Cache:new{ type = "bookinfo" }:get(book_hash, 604800, true)
+    return type(details) == "table" and details.cover or nil
+end
+
+-- Punctuation that opens a title. 《西游记》 and "Dune" should both be filed under their first letter.
+local LEADING_PUNCTUATION = {
+    ["《"] = true, ["〈"] = true, ["「"] = true, ["『"] = true, ["【"] = true, ["（"] = true,
+    ["“"] = true, ["‘"] = true, ["\""] = true, ["'"] = true, ["("] = true, ["["] = true,
+    [" "] = true, ["°"] = true,
+}
+
+local function _coverLetter(item)
+    local title = item.book_row and item.book_row.title
+    if type(title) ~= "string" then return nil end
+    for _, char in ipairs(util.splitToChars(title)) do
+        if not LEADING_PUNCTUATION[char] then
+            return #char == 1 and char:upper() or char
+        end
+    end
+    return nil
+end
+
+local function _updateItemsBuildUI(item, cover_w, cover_h)
+    if not (item and item.hash) then return nil end
+    local cover_cache_path = item._is_cover_loaded or Cache:new{ type="cover" }:get(item.hash)
+
+    if cover_cache_path then
+        item.state = CenterContainer:new{
+            dimen = Geom:new{ w = cover_w, h = cover_h },
+            ImageWidget:new{ 
+                file = cover_cache_path,
+                width = cover_w, 
+                height = cover_h, 
+                scale_factor = 0, 
+                file_do_cache = true,
+                alpha = false,
+                use_legacy_image_scaling = true,
+            }
+        }
+        return cover_cache_path
+    end
+
+    local border = Size.border.thin
+    local in_w, in_h = cover_w - 2 * border, cover_h - 2 * border
+    local letter = _coverLetter(item)
+    item.state = FrameContainer:new{
+        width = cover_w, height = cover_h,
+        bordersize = border, margin = 0, padding = 0,
+        CenterContainer:new{
+            dimen = Geom:new{ w = in_w, h = in_h },
+            TextBoxWidget:new{
+                text = letter or "⛶",
+                -- Sized from the width as well: a tall, narrow slot must still fit a wide glyph.
+                face = Font:getFace("cfont", letter and math.floor(math.min(in_w * 0.6, in_h * 0.45)) or math.floor(in_h * 0.2)),
+                bold = letter ~= nil,
+                width = in_w, alignment = "center",
+            }
+        }
+    }
+end
+
+function M:getCoverItemsPerPage()
+    if not self.inner_dimen then return 10 end
+    local scale_by_size = Screen:scaleBySize(1000000) / 1000000  
+    local top_height = (self.title_bar and not self.no_title) and self.title_bar:getHeight() or 0 
+    local bottom_height = 0
+    if self.page_return_arrow and self.page_info_text then 
+        bottom_height = math.max(self.page_return_arrow:getSize().h, self.page_info_text:getSize().h) + Size.padding.button
+    end 
+    local available_height = self.inner_dimen.h - top_height - bottom_height
+    local items_per_page = math.floor(available_height / scale_by_size / 120)
+    return math.max(3, math.min(14, items_per_page))
+end
+
+function M:_updateCoverItems(select_number, no_recalculate_dimen)
+    if not self.show_cover then return end
+    if not self.item_table then return end
+
+    -- Every Menu:updateItems frees the widgets embedded in the item rows
+    -- (VerticalGroup:clear -> free, recursively), and MenuItem embeds
+    -- item.state directly. Since item.state lives on the item_table, which
+    -- outlives the rows, anything left there afterwards is a *freed* widget --
+    -- and painting one crashes with "attempt to index field '_bb' (a nil
+    -- value)". Rebuilding only the current page therefore is not enough: any
+    -- item skipped, on another page, or missed because of an early return
+    -- below keeps a dangling widget that KOReader will happily re-embed.
+    --
+    -- So drop every reference first, then rebuild just what this page needs.
+    -- A nil state is safe: MenuItem falls back to a HorizontalSpan.
+    for _, item in ipairs(self.item_table) do
+        item.state = nil
+    end
+
+    if self.items_max_lines then return end
+    local perpage = self.perpage
+    local current_page = self.page
+    local idx_offset = (current_page - 1) * perpage
+    local first_item = self.item_table[idx_offset + 1]
+    if not (first_item and first_item.hash) then return end
+
+    local cover_h = self._cached_cover_h
+    local cover_w = self._cached_cover_w
+    for idx = 1, perpage do
+        local item = self.item_table[idx_offset + idx]
+        if item and item.hash then
+            item._is_cover_loaded = _updateItemsBuildUI(item, cover_w, cover_h)
+        end
+    end
+
+    -- data digest, used to detect page changes
+    local new_last_page_summary = tostring(first_item.hash) .. "_" .. tostring(perpage)
+    local is_summary_changed = (new_last_page_summary ~= self._last_page_summary)
+    if not is_summary_changed then return false end
+
+    logger.info("[menucovers] Page change detected, restarting task...")
+    self._cover_channel = self._cover_channel or AsyncHelper:createChannel("Menu_Covers", 4)
+    self:_clearTasks()
+    -- debounce
+    if self._debounce_timer_cancel then
+        self._debounce_timer_cancel()
+        logger.dbg("[menucovers] Previous publish schedule cancelled")
+    end
+
+    -- Offline: leave _last_page_summary untouched, so the first updateItems after
+    -- reconnecting still sees the change and schedules the covers for this page.
+    if not NetworkMgr:isConnected() then return false end
+    self._last_page_summary = new_last_page_summary
+
+    self._debounce_timer_cancel = AsyncHelper.delay(1, function()
+        self._debounce_timer_cancel = nil
+        if self.page ~= current_page then return end
+        logger.dbg("[menucovers] Stopped, collecting covers...")
+
+        local missing_covers = {}
+        local added_hashes = {}
+        for idx = 1, perpage do
+            local item = self.item_table[idx_offset + idx]
+            if item and item.hash then
+                item.cover = Api.usableCoverUrl(item.cover) or _cachedDetailsCover(item.hash)
+            end
+            if item and item.cover and item.hash then
+                if not (item._is_cover_loaded or added_hashes[item.hash]) then
+                    table.insert(missing_covers, { item = item })
+                    added_hashes[item.hash] = true
+                end
+            end
+            -- Book details and comments are deliberately NOT prefetched here. Doing so fired one
+            -- request per visible item on every page settle -- a burst of ~14 speculative calls to
+            -- the API for books the reader mostly never opens. Device logs showed the z-library API
+            -- tarpitting that burst (15s stalls, independent of mirror or wifi), which is the server
+            -- defending a free service against exactly this. Both load on demand instead: book
+            -- details when a cover is tapped, comments when the comments view is opened. Covers still
+            -- prefetch because they come from a separate CDN and are what the grid actually displays.
+        end
+
+        if #missing_covers == 0 then
+            logger.dbg("[menucovers] all covers ready")
+            return
+        end
+
+        local cover_cache = Cache:new{ type = "cover" }
+        self._cover_channel:executeBatch({
+            items = missing_covers,
+            task_func = PreHelper.downloadCover,
+            max_retries = 2,
+            get_task_args = function(req)
+                return {req.item.cover, req.item.hash, true}
+            end,
+            on_item_end = function(idx, req, success)
+                if self._is_closed or self.page ~= current_page then return false end
+                if success and req and req.item and req.item.hash then
+                    if cover_cache:get(req.item.hash) then
+                        logger.dbg(" [covermenu]page unchanged, callback refresh menu item:", req.item.hash)
+                        UIManager:nextTick(function()
+                            if self._is_closed or self.page ~= current_page then return false end
+                            self:updateItems(nil, true)
+                        end)
+                    end
+                end
+                return false
+            end
+        })
+    end) 
+end
+
+local function _fitToWidth(text, face, max_width, bold)
+    if RenderText:getSubTextByWidth(text, face, max_width, true, bold) == text then return text end
+    return RenderText:truncateTextByWidth(text, face, max_width, true, bold)
+end
+
+-- With many rows per page, the normal font leaves room for two lines: one line of title and one of
+-- details cuts off most titles. Use one smaller size for the whole list so a title gets two lines,
+-- within the same limit KOReader sets for shrinking row text.
+function M:_fitFontToBookRows()
+    local first_item = self.item_table and self.item_table[1]
+    if not (first_item and first_item.book_row and self.item_dimen and self.font_size) then return end
+    local three_lines = TextBoxWidget:getFontSizeToFitHeight(self.item_dimen.h - 2 * self.linesize, 3)
+    if three_lines < self.font_size then
+        self.font_size = math.max(three_lines, 12, self.font_size - 8)
+    end
+end
+
+-- MenuItem wraps a row at one font size and cuts whatever does not fit off the bottom, so a long
+-- title would push the author and details out of sight. Shorten the title first: it gets every
+-- line but the last, which stays for the author and details. Wrapping breaks lines early, hence
+-- the margin on the title's width. When the details line is too long, the author gives way.
+function M:_fitBookRows()
+    if not (self.item_table and self.item_dimen and self.perpage and self.font_size) then return end
+    local face = Font:getFace("smallinfofont", self.font_size)
+    local content_w = self.item_dimen.w - 2 * Size.padding.fullscreen - (self.show_cover and self.state_w or 0)
+    local line_h = math.floor((1 + TextBoxWidget.line_height) * face.size + 0.5)
+    local lines = math.floor((self.item_dimen.h - 2 * self.linesize) / line_h)
+    local first = ((self.page or 1) - 1) * self.perpage + 1
+
+    for idx = first, first + self.perpage - 1 do
+        local item = self.item_table[idx]
+        local row = item and item.book_row
+        if row then
+            -- MenuItem replaces every newline with a space, then calls this hook on the result.
+            -- It is the one way to keep the title on a line of its own.
+            item.bidi_wrap_func = item.bidi_wrap_func or function() return item.text end
+            local width = content_w
+            if item.mandatory then
+                local mandatory = TextWidget:new{
+                    text = tostring(item.mandatory),
+                    face = Font:getFace("infont", self.items_mandatory_font_size or (self.font_size - 4)),
+                }
+                width = width - mandatory:getSize().w - Size.span.horizontal_default
+                mandatory:free()
+            end
+            local fit_key = table.concat({ width, lines, self.font_size }, "_")
+            if item._book_row_fit ~= fit_key then
+                item._book_row_fit = fit_key
+                if lines < 2 then
+                    item.text = BookRow.format(_fitToWidth(row.title, face, width, true))
+                else
+                    local title = _fitToWidth(row.title, face, width * (lines - 1) * 0.9, true)
+                    -- Whatever lines a short title leaves over go to the author.
+                    local title_w = RenderText:sizeUtf8Text(0, width * lines * 2, face, title, true, true).x
+                    local title_lines = math.min(lines - 1, math.max(1, math.ceil(title_w / (width * 0.9))))
+                    local second_lines = lines - title_lines
+                    local second_w = second_lines > 1 and width * second_lines * 0.9 or width
+                    local second_line = _fitToWidth(row.details or "", face, width, false)
+                    local room = second_w - RenderText:sizeUtf8Text(0, width, face, second_line .. BookRow.SEPARATOR, true, false).x - face.size * 1.5
+                    if second_line == "" then
+                        second_line = _fitToWidth(row.author, face, second_w, false)
+                    elseif room > face.size * 3 then
+                        second_line = BookRow.secondLine(_fitToWidth(row.author, face, room, false), second_line)
+                    end
+                    item.text = BookRow.format(title, second_line)
+                end
+            end
+        end
+    end
+end
+
+function M:_recalculateDimen()
+    if not self.list_per_page then
+        self.list_per_page = self.show_cover and self:getCoverItemsPerPage() or G_reader_settings:readSetting("items_per_page") or 10
+    end
+    if tonumber(self.perpage) ~= self.list_per_page then
+        self.items_per_page = self.list_per_page
+    end
+    Menu._recalculateDimen(self)
+    if self.show_cover and self.item_dimen then
+        self._cached_cover_h = self.item_dimen.h - 2 * Size.line.medium 
+        self._cached_cover_w = math.floor(self._cached_cover_h * 2 / 3)
+        self.state_w = self._cached_cover_w + 8 * Size.padding.small
+    end
+    self:_fitFontToBookRows()
+    self:_fitBookRows()
+end
+-- The row on this page that has focus, or nil when focus is not on a book (the title bar, or a
+-- menu not drawn yet).
+function M:_focusedRow()
+    if not (self.layout and self.selected and self.page and self.perpage) then return nil end
+    local focused = self:getFocusItem()
+    local index = focused and focused.entry and focused.entry.idx
+    if not index then return nil end
+    if self.items_max_lines then
+        for row, page_index in ipairs(self.page_items and self.page_items[self.page] or {}) do
+            if page_index == index then return row end
+        end
+        return nil
+    end
+    local row = index - (self.page - 1) * self.perpage
+    if row >= 1 and row <= self.perpage then return row end
+end
+
+-- KOReader's own calls always name the row to focus (1, on a page change). A nil comes from this
+-- plugin redrawing the page in place -- a cover arrived, a language was ticked -- and Menu reads
+-- it as "focus the first row", so on a device without a touchscreen every such redraw threw the
+-- reader back to the top of the page. Keep the row they were on instead.
+function M:updateItems(select_number, no_recalculate_dimen)
+    if select_number == nil then select_number = self:_focusedRow() end
+    if self.show_cover then self:_updateCoverItems(select_number, no_recalculate_dimen) end
+    return Menu.updateItems(self, select_number, no_recalculate_dimen)
+end
+
+-- A book's details dialog fetches its cover into the cache. When it closes -- or the fetch lands
+-- after it did -- redraw this page if a cover it is missing is there now; otherwise the reader
+-- comes back to a blank slot that stays blank until the page changes. Returns nothing, so the
+-- event still reaches every other list on the window stack.
+function M:onZlibraryCoverCached()
+    if self._is_closed or not (self.show_cover and self.item_table and self.perpage and self.page) then
+        return
+    end
+    local idx_offset = (self.page - 1) * self.perpage
+    local cover_cache = Cache:new{ type = "cover" }
+    for idx = 1, self.perpage do
+        local item = self.item_table[idx_offset + idx]
+        if item and item.hash and not item._is_cover_loaded and cover_cache:get(item.hash) then
+            self:updateItems(nil, true)
+            return
+        end
+    end
+end
+
+function M:_clearTasks()
+    -- Only the menu's own channel. PreLoader.channel is shared with the rest of the plugin
+    -- (init queues the favorites prefetch on it), and clearing it here silently drops those
+    -- tasks -- which is exactly why favorite badges never showed in cover view.
+    if self._cover_channel then self._cover_channel:clearTasks() end
+end
+
+function M:onCloseWidget()
+    self:_clearTasks()
+    self._last_page_summary = nil
+    self._is_closed = true
+    self.list_per_page = nil
+    if self._debounce_timer_cancel then
+        self._debounce_timer_cancel()
+        self._debounce_timer_cancel = nil
+    end
+    Menu.onCloseWidget(self)
+end
+
+return M

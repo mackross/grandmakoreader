@@ -1,0 +1,558 @@
+# Changelog
+
+Notable changes per release, from a user's point of view. Anything that only moved code around
+is summarised rather than listed; the commit history has the detail.
+
+The version number is set by the release workflow, which bumps the patch version on every push
+to `main` — so the top section is the one about to ship.
+
+## 1.0.59
+
+### Added
+
+**Czech.** The plugin now speaks Czech, thanks to PepikVaio (#266).
+
+### Fixed
+
+**Working servers are no longer written off as blocked.** A search result whose book descriptions
+contained HTML, and whose text happened to include a phrase like "Just a moment", was taken for a
+"verifying your browser" page: the plugin reported the server as refusing automated access and
+skipped it for six months. Real answers are now never mistaken for one.
+
+**The favourite button knows all your favourites.** It only knew the 30 most recently saved, so
+an older favourite showed "Add To Favorites". It now reads the whole list (up to 600). With no
+favourites at all, the list is no longer fetched again on every book you open.
+
+**"No similar books found" is fully translated.** When a book had no similar books, other
+languages showed the English words "similar books" in the middle of a translated sentence.
+
+**The download limit message in every language.** When the daily limit was used up, only English
+showed the "Download limit reached" notice; other languages got a raw error with a Retry button.
+
+**Updating the plugin is safer.** The update is now unpacked next to the installed plugin, checked,
+and only then swapped in, so an interrupted or damaged update leaves the old version working
+instead of a mix of both, and files a release removed no longer linger. Checking for and
+downloading an update no longer freezes the screen, and can be cancelled with a tap.
+
+**A request that ends without an answer is not sent again behind your back.** It now says it
+failed and offers Retry, instead of silently repeating it with the screen frozen.
+
+### Security
+
+Download links, which work like a password for that one file, and what you search for no longer
+appear in KOReader's log at its normal level — the log people attach to bug reports. Redirects
+from a secure (https) address to an insecure (http) one are no longer followed, so your session
+and password are never sent unencrypted.
+
+## 1.0.58
+
+### Fixed
+
+**The cover switches work on the first tap.** In View Settings, the first tap on Search Covers or
+Browse Covers did nothing: covers stayed on and the box stayed ticked, and only a second tap
+turned them off. One tap now turns covers off and the next turns them back on.
+
+**Retry after a server hiccup, in every language.** Z-library sometimes answers a request with a
+passing "HTTP Error 400". In English the plugin offered Retry for it; in every other language it
+showed the bare error with no way to try again. All languages now get the Retry button.
+
+### Internal
+
+Nothing changes on screen. The five largest files — the settings, the server requests, the plugin
+itself, the dialogs and the book details screen, 1,000 to 2,200 lines each — are split into smaller
+files by topic, with the code moved unchanged, and the details screen's longest function is broken
+into one piece per part of the screen. Covers and the update download now share one download
+routine. A sign-in retry that search could never reach is gone. New tests check that every function
+survived each split exactly once, and pin what the details screen shows for each kind of book.
+
+## 1.0.57
+
+### Added
+
+**Recent searches.** The search box remembers your last 10 searches that found something. Tap one
+to run it again, hold one to remove it, or clear the whole list. Clearing your credentials clears
+it too.
+
+### Changed
+
+**Book lists are easier to read.** Each row has the title on top and the author below it, at one
+text size for the whole list. With many rows per page the list uses a slightly smaller size so
+titles get two lines, and a long author wraps when the title leaves room. Search results and
+Similar Books also show the year, size and, when you search several formats, the format. Recommended, Most Popular, My Books and
+booklists stay to the title and author.
+
+**A clearer book details screen.** It now fills the screen and has an X to close it. Download has
+its own row at the top and the other buttons share rows, which leaves more room for the
+description. The description uses the same plain, left-aligned text as the rest of the plugin, and
+"Profile" is now called "Description".
+
+**Long titles and authors can be read in full.** The book details screen shows up to three lines
+of each. If a title is longer than that, tap it to see all of it.
+
+**Ratings moved to the details screen.** Lists no longer show them, and books nobody has rated no
+longer show a score of 0.
+
+**Books without a cover** show their first letter instead of an empty box.
+
+**My Books.** The Downloaded tab is no longer cut off: your download count moved to the title of
+the screen. Dates now read in full, for example 2026-08-09.
+
+**Search options.** The pickers use a check mark. Search order has a Default entry, so it always
+shows what is in effect, and the search box names the language the way the picker does.
+
+### Fixed
+
+**Lists kept stopping early.** A list opened from the cache could not load more books, so Most
+Popular with languages or formats selected stopped at 30 until you refreshed it. It now carries
+on from where the cached list ends. A list already cached by an older version needs one refresh.
+
+## 1.0.56
+
+### Fixed
+
+**The book description has the right name in Chinese.** On the book details screen, Simplified
+and Traditional Chinese labelled the description 个人资料 / 個人資料, which means a person's
+profile. It now reads 简介 / 簡介.
+
+## 1.0.55
+
+### Added
+
+**Your booklists, in My Books.** A new Booklists tab lists the booklists on your Z-library
+account, with how many books each holds. Open one to see its books, then open or download them
+the same way as in Favorites. You no longer need to favourite a book on the website first to get
+it onto your reader. Creating lists and adding books to them still happens on the website.
+
+### Fixed
+
+**Switching tabs in My Books while a list loads shows the tab you picked.** A slow Favorites
+answer could land in Downloaded after you switched, and the other way round.
+
+**Readers without a touchscreen** — the Kindle 4 and other key-only readers:
+
+- **You keep your place in a list.** The selection jumped back to the first book whenever a cover
+  finished loading or you came back from a book's details, and in the language list after every
+  tick. It now stays on the book or language you were on.
+- **The author and ISBN in a book's details can be selected.** Searching for the author and
+  copying the ISBN only worked by tapping them. Press Up from the first button to reach them.
+- **Book details show which button is selected** as soon as they open, and coming back from
+  Profile or Comments returns to that button instead of the first one.
+- **Left goes to the previous tab in My Books**, as Right goes to the next.
+
+### Internal
+
+Loading more search results no longer tries to sign in again when it fails. Search works without
+an account, so the "please sign in" error that would trigger it never happens, and if it ever had,
+signing in and searching again could have repeated endlessly. A test keeps it from coming back.
+
+## 1.0.54
+
+### Fixed
+
+**Most popular stopped at 30 books** when you have search languages or formats selected. It now
+loads the next 30 as you reach the end of the list, up to the 500 the server offers. Without a
+selection it is Z-library's own list of 100, as before.
+
+## 1.0.53
+
+### Changed
+
+**Most popular follows your search languages and formats.** If you have picked search
+languages or formats (**Search options → Select search languages / Select search formats**, or
+the language button in the search box), the Most popular tab now lists the most popular books in
+those languages and formats, as the server ranks them — an EPUB-only reader no longer sees PDFs
+there. Z-library's own most-popular list is the same mostly-English one whatever is asked for, so
+with either selected the tab asks the search instead, for everything matching them ordered by
+popularity. With neither selected it is unchanged. Each selection is cached separately, so
+changing the languages or formats never serves the list fetched under the old ones.
+
+### Fixed
+
+**Background loading no longer stalls for minutes once you are signed in.** The plugin loads a few
+things in the background, such as which books are in your favourites. Any of these with a large
+answer — thirty favourites is enough — got stuck until it was killed three minutes later, and the
+next one after it did the same. They now finish in about a second, so favourite markers show up
+in the lists again.
+
+**Covers in the Downloaded list.** Z-library sends this list with broken cover addresses, so every
+cover in it failed. The plugin no longer asks for them, and shows the cover from the book's details
+instead for any book you have opened in the last week. Covers that are missing on the server are
+now tried once rather than three times.
+
+**Covers appear when you come back from a book's details.** Opening a book downloads its cover, but
+the list behind it kept a blank space until you turned the page. It now shows the cover as soon as
+you go back.
+
+## 1.0.52
+
+### Added
+
+**The ISBN, on the book details screen.** Z-library sends an ISBN with almost every book and the
+plugin threw it away. It now sits under the publisher and year, and tapping it copies it. That
+number is what Calibre and other desktop tools match an edition on — a title alone often finds the
+wrong edition, or none — so it saves opening the downloaded file and reading the number off its
+copyright page by hand. Books the server has no ISBN for simply do not show the line.
+
+**A way to clear the cover cache.** **Settings → Advanced → Clear cover cache** removes every cover
+the plugin has stored, and says how much space it freed. There was no way to do this before:
+*Clear runtime cache* never touched covers, and they could only be dropped one book at a time by
+refreshing that book.
+
+**A setting to send a browser's identification.** **Settings → Advanced → Identify as a web
+browser**, off by default. Worth trying only if a server refuses the plugin itself — it does not
+help with sign-in trouble, or with a server that insists on a browser check.
+
+### Changed
+
+**The plugin says what it is when it talks to a server.** It used to claim to be Chrome 96, a
+browser released in 2021. No mirror turns out to care either way: they answer identically to that,
+to a current Chrome, to an honest name, and to no name at all. So it now identifies itself
+honestly, which gives a server operator someone to contact instead of a disguise to see through.
+The setting above switches back, should one ever object.
+
+### Fixed
+
+**Your book covers no longer appear in Android's gallery and file manager.** On Android the
+plugin's cache sits in shared storage, so every cover it had stored was indexed as media, like a
+photo — one reader found their entire search history laid out in their phone's file manager. The
+cache has moved to a hidden folder that Android's media scanner skips, and the old, visible folder
+is moved out of the way the first time you run this version, so the covers already stored go with
+it. Nothing is lost: it is the same cache in a new place. Covers may linger in a *Recent files*
+list until the device next rescans or restarts.
+
+### Internal
+
+The two sign-in endpoints are now described as data — a path, and a list of form fields whose
+values carry placeholders — rather than as code that builds each request. The requests themselves
+are unchanged, verified byte for byte against the previous version. The point of the shape is that
+the part of this plugin that keeps breaking when Z-library changes something could eventually be
+fixed by publishing a file, the way the mirror list already is, instead of by cutting a release
+that only reaches the people who take it.
+
+New strings are translated into all 16 locales. Test harnesses were added for the ISBN parsing, the
+sign-in endpoint descriptions and the encoding of credentials into them, the User-Agent and its
+setting, and the cache move — including that clearing the cover cache does not take with it the
+marker that keeps the folder hidden. A pass-through `urlEncode` stub was replaced with KOReader's
+real one, which no harness had been exercising.
+
+## 1.0.51
+
+### Added
+
+**An About screen.** **Menu → Z-library → About** shows the version you are running, which is the
+first thing worth knowing when something goes wrong and the first thing to put in a bug report. It
+also carries a QR code you can scan with a phone, for anyone who would like to support the plugin —
+the only place it is mentioned, and it interrupts nothing.
+
+### Fixed
+
+**Background work can no longer undo your settings.** Everything the plugin does in the background
+— warming caches, fetching covers, probing mirrors, downloading — runs in a separate process, and
+those processes were writing the settings file from a copy made when they started. A setting you
+changed while one was running could be silently reverted, and three mirror probes running at once
+overwrote each other, which is why servers that block the plugin kept being tried again after
+1.0.47 was supposed to remember them. Background work now keeps its hands off the shared files and
+sends anything worth keeping back to be saved properly — including a sign-in it had to renew, which
+used to be thrown away, making every background task sign in again.
+
+**Tapping a cover no longer crashes KOReader.** If the cover had been dropped from the cache since
+it was fetched, the tap ended in a *"bad argument"* crash instead of doing nothing.
+
+**A cover that cannot be saved is fetched again instead of leaving a blank.** When a cover was
+downloaded but could not be moved into the cache — a full or unwritable cache folder — the plugin
+recorded it as done, so the grid kept an empty slot that nothing ever retried. Such a cover is now
+treated as failed, which means it is retried like any other.
+
+**An empty answer from the server is no longer saved as a book.** A mirror that replied with
+nothing at all produced a 0-byte file presented as a finished download — and if you already owned
+that book, it replaced your copy. Downloads that arrive empty are now reported as failures.
+
+**Books with very long titles download again.** The file name was built from the full title and
+author with nothing limiting its length, so a long one exceeded what the filesystem accepts and the
+download failed with *"File name too long"* every time. Names are now shortened to fit.
+
+**Error messages look like errors.** They were being shown with the ordinary notice icon instead of
+the warning one.
+
+**Searching for a working server no longer leaves its message on screen.** On the second and later
+searches for a server, the *"Fetching domains…"* message could stay up after the sweep finished.
+
+## 1.0.50
+
+### Added
+
+**Sign in with a session key, when signing in does not work at all.** `zlibrary_credentials.lua`
+takes two new fields, `userId` and `userKey`: sign in to Z-library in a browser, copy its
+`remix_userid` and `remix_userkey` cookies into them, and the plugin uses that session directly
+without ever reaching a login endpoint. No email or password is needed alongside them. This is the
+way back in when Z-library's sign-in refuses credentials that are perfectly good — which it has
+done twice this year — and the sessions do not appear to expire.
+
+### Fixed
+
+**A sign-in the server refuses is now tried against Z-library's other login endpoint.** Several
+readers whose email and password work on the website were told *"Incorrect email or password"* by
+the plugin ([#239](https://github.com/ZlibraryKO/zlibrary.koplugin/issues/239)). Z-library has two
+sign-in endpoints and has changed which of them works before — 1.0.48 had to move to one of them
+when the other started rejecting valid credentials, and that older endpoint serves sign-ins again.
+Credentials one endpoint refuses are now offered to the other before you are told anything, so it
+no longer matters which of the two your account works with. A sign-in that works first time still
+takes a single request; a server that is blocking the plugin outright still says so instead of
+looking like a wrong password; and a server that has temporarily locked sign-ins out after a run of
+attempts (*"Too many logins"*) is left alone rather than asked twice, which would only extend the
+lockout.
+
+**Loading messages no longer crash KOReader when the Appearance plugin is installed.** With
+[appearance.koplugin](https://github.com/Euphoriyy/appearance.koplugin) installed, opening *Most
+popular* or *Recommended* — and most other actions that show a *"… (tap to cancel)"* message —
+crashed KOReader with a *"stack overflow"*. The plugin asked KOReader to fit each loading message on
+one line, which KOReader does by rebuilding the message at smaller and smaller font sizes; the
+Appearance plugin put its own font back on every rebuild, so the rebuilding never stopped. Loading
+messages now wrap onto a second line when they need one, at the normal font size, instead of
+shrinking to fit.
+
+## 1.0.48
+
+### Fixed
+
+**Signing in works again.** Z-library's `/eapi/user/login` API began rejecting valid credentials with
+*"Authorization failed"*, which broke sign-in — and with it downloads, My Books and anything else
+that needs an account — for everyone using the plugin. The plugin now signs in the same way the
+website and the official desktop app do: a form POST to `/rpc.php`, which accepts your normal email
+and password (no browser or extra steps needed). A genuinely wrong password still reports *"Incorrect
+email or password"* and can be corrected in place, exactly as before.
+
+## 1.0.47
+
+### Fixed
+
+**Browsing book lists with covers no longer crashes on fast page turns.** In cover (grid) view,
+turning the page while covers were still loading could crash KOReader with an *"attempt to index
+field '_bb'"* error. Each cover slot is now cleared properly between refreshes, so a cover image that
+was already freed can no longer be painted again.
+
+**Auto-discovery stops re-picking a server that can't actually search.** Some mirrors answer the
+health check but block the real search behind an anti-bot page (*"This Z-library server is refusing
+automated access"*) — and auto-discovery kept choosing the same one every sweep. When a server
+answers any request with such a page it is now remembered and skipped by discovery, so the next
+sweep moves on to a working mirror. The block lasts a good while but is not permanent, so a mirror
+that later drops its anti-bot wall is eventually tried again.
+
+**Auto-discovery no longer settles on the same server every time.** *Auto-discover base URL* used to
+pick the single fastest mirror, so repeated runs kept landing on the same one; it now chooses at
+random among the fastest few, spreading the load. (The server you are currently on is already left
+out of the running, so discovery never just re-picks it.)
+
+## 1.0.46
+
+### Fixed
+
+**A finished download shows up in the file browser straight away.** If you stayed in the folder a
+book was downloading into, the new file did not appear until you left the folder and came back —
+which looked like the download had failed. The file list now refreshes itself once the download
+finishes (whether you tap *Close* or have the open-book prompt switched off), so the book is there
+immediately.
+
+## 1.0.45
+
+### Added
+
+**Sort downloaded books into folders of your own.** Set up named *download categories* under
+**Menu → Z-library → Settings → Download categories**, each of which becomes a folder inside your
+download directory. A category can have one level of sub-categories — `Fiction` with `Romance`,
+`Sci-Fi` — which nest as folders the same way (`…/Fiction/Romance`). The folders are created for you
+the first time a book is filed into them; renaming or removing a category only changes where future
+downloads go and never touches books already on the device.
+
+**Choose where a book goes right after downloading.** The "open book" dialog now has a **Move to**
+button. It opens a list — *Keep in download folder* (the default, always shown so you know where the
+book lands if you do nothing), your categories in alphabetical order, and **New category…** to make
+one on the spot (with an optional sub-category) and file the book into it in one go. *Close* files
+the book just as *Open book* does, so the destination is independent of whether you read it now. With
+no categories set up, the dialog is exactly as it was.
+
+If a book with the same name is already in the target folder, both are kept — the new one gains a
+` (2)` suffix rather than overwriting. If a folder can't be created or the move fails, the book is
+left in the download folder with a note, so a filing attempt can never lose it.
+
+### Internal
+
+The new strings are translated into all 15 locales. Test harnesses were added under `test/` covering
+category storage, the folder move (cross-filesystem fallback and name-collision handling), the
+in-flow category creation and alphabetical sorting, and the post-download chooser wiring.
+
+## 1.0.44
+
+### Fixed
+
+**Favourites now lead with what you saved most recently.** *My Books → Favourites* asked the server
+for the list by each book's own publication date, so a book you had just favourited did not appear at
+the top. It is now ordered by save date, newest first. (*Downloaded* is deliberately left as it is:
+its endpoint ignores the sort order entirely, so recency there would have to be reconstructed on the
+device — judged not worth the added paging.)
+
+## 1.0.43
+
+### Added
+
+**A working mirror can be found even when the usual source is blocked.** The list of mirrors to try
+is served from a curated file on the jsDelivr and GitHub CDNs. When neither can be reached — GitHub is
+blocked on some networks — the plugin now falls back to Z-Library's own domain endpoint as a last
+resort, so discovery still has somewhere to get a list. The CDNs are still tried first: they carry the
+fuller, curated list and stay reachable even when Z-Library itself is down.
+
+### Changed
+
+**Auto-discovery keeps the quickest mirror, not the first to answer.** The interactive *Auto-discover
+base URL* sweep probes every mirror; it used to keep whichever replied first, which — because the
+candidates are shuffled — was essentially random. It now keeps the fastest of the mirrors that
+answered, from timings it was already measuring. (The automatic path is left as it was: it stops at
+the first working mirror rather than making you wait out the whole sweep.)
+
+### Fixed
+
+**No more doomed lookups for `.onion` mirrors.** The operator's domain list includes two Tor
+`.onion` addresses. Without Tor these cannot be reached, so each caused a failed DNS lookup logged as
+an error, indistinguishable from a genuinely broken mirror. They are now filtered out of the fetched
+list.
+
+### Internal
+
+The deprecated `name` field was removed from `_meta.lua` (KOReader ignores it and warns when it is
+present). The bundled `domains.json` was refreshed from the operator's endpoints, and a note records
+that `z-library.sk` sits behind the same browser check as `1lib.sk`.
+
+## 1.0.42
+
+### Fixed
+
+**Signing in no longer dead-ends on a fresh install.** Anything that needs an account — a
+download, My Books, book details — used to fail with *"Please set both username and password
+first."* and stop there, leaving you to find *Menu → Z-library → Settings → Set credentials* on
+your own and start over. The plugin now asks for your credentials at that moment and carries on
+with whatever you were doing once you are signed in. Searching still works signed out, as before,
+so you can browse first and only sign in when you download.
+
+**A wrong password can be corrected in place.** Entering a bad username or password used to save
+it, close the dialog, try to sign in, and leave you with only an error message — the same dead
+end, one step later. Tapping **Set and verify** now checks what you typed against the server
+before keeping it: if the server rejects it, the dialog stays open with your entry intact so you
+can fix the typo. If the server cannot be reached at all — no Wi-Fi, a dead mirror — the
+credentials are saved anyway, with a note that they could not be checked yet, so a mirror being
+down never stops you storing them.
+
+**View settings no longer forget themselves.** *Search Items/Page*, *Browse Items/Page* and the
+cover toggles used to be kept in a cache that expires entries five days after they were last
+saved — so five days after you changed one, everything was quietly back to its default. They are
+now stored with the other persistent settings, existing choices are carried over automatically,
+and *Clear runtime cache* no longer takes them with it.
+
+### Added
+
+**Clear credentials.** A new entry under **Advanced** that signs you out completely: it forgets
+your stored username, password and session, and the cached lists tied to your account
+(recommended, favourites, downloaded). Handy before handing the device to someone else, or to
+switch accounts. If you set your credentials through the `zlibrary_credentials.lua` file, that
+file restores them on the next start — and the plugin now tells you so instead of reporting a
+clearing that will not stick.
+
+**Requests can be cancelled, not just downloads.** Searching, loading more search results,
+browsing recommended or most popular books, and opening book details or comments used to freeze
+the screen until the server answered. These now run in the background like downloads do: the
+loading message reads *(tap to cancel)*, and a tap aborts the request and hands the screen back
+straight away. Signing in, adding favourites and other account-changing actions are deliberately
+left as they were.
+
+### Changed
+
+**"Developer options" is now "Advanced".** Clearing a saved password is not a developer action,
+and the new *Clear credentials* entry sits there beside the existing *Clear user session* and
+*Clear runtime cache*.
+
+**"Verify credentials" is gone — the action button verifies now.** The credentials dialog's
+button reads **Set and verify** and does both in one step, so the separate menu entry and dialog
+button it duplicated have been removed.
+
+### Internal
+
+The new sign-in strings are translated into all 14 locales. Test harnesses covering the sign-in
+flow, the credential-rejection classifier and the dialog teardown it relies on were added under
+`test/`.
+
+## 1.0.41
+
+### Added
+
+**Every Z-Library search language.** The language filter offered around 30; it now offers all the
+server lists — roughly 190. The languages that were already shown in their own script keep it; the
+rest use their English name.
+
+**A search box for the language list.** Choosing from ~190 rows meant a lot of scrolling. A
+magnifying glass in the picker's title bar now filters the list as you type, matching both the
+language's name and its code — so "ish" finds Irish, and "japanese" finds 日本語. Languages you have
+already selected are lifted to the top, so a handful of choices are not lost among the rest.
+
+## 1.0.40
+
+### Fixed
+
+**Sign-in and search failing with `HTTP Error: 307`.** The plugin only followed a redirect when
+it pointed at a different host as a full absolute URL. Anything else — a relative `Location`, or
+the same host over `https` instead of `http` — was refused and the raw status shown as an error.
+Redirects are now resolved properly, `308` is understood, and a chain of several hops is followed
+rather than only the first.
+
+**Mirrors behind a browser check now say so.** Some servers answer the API with a "verifying your
+browser" page instead of data. That produced a bare status code with nothing to act on. The
+plugin now reports which server is refusing it and offers **Auto-discover base URL** alongside
+Retry, since another mirror is the only thing that helps. Note this does not make such a mirror
+usable — those checks cannot be passed by a plugin — but it stops the failure being a mystery.
+
+**Redirect loops no longer hammer the server.** A mirror redirecting to itself was followed
+repeatedly before giving up, taking several seconds and several requests. It now stops at the
+first repeat.
+
+**Cookies set during a redirect are returned**, so a mirror that only wants a cookie to be echoed
+back now works.
+
+**A download interrupted by a redirect no longer sends an empty request.** Retried sign-ins and
+searches were re-sent without their body while still claiming to have one.
+
+**The Telugu language name rendered as empty boxes** in the search-language list. No bundled
+KOReader font covers Telugu script, so it now reads `Telugu`.
+
+**Timeouts are shown in each language's own units.** The budget in the retry dialog and the
+timeout settings were hard-coded to `15s` everywhere; Korean now shows `15초`, Japanese `15秒`,
+Russian `15 с`.
+
+### Added
+
+**A search button on the results page.** Starting a different search meant closing the results,
+finding the menu and beginning again. The magnifying glass in the title bar reopens the search
+box, filled in with the query you already ran.
+
+**Hold a result to download it.** Holding a row in the search results, or in the browse lists,
+offers a download without opening the book first. It still asks before starting, since a download
+counts against your quota.
+
+**"Ask to open after download" can be switched off.** Found beside *Set download directory*. On
+by default. With it off, a finished download shows a brief notice instead of a dialog, and Wi-Fi
+is left alone — the "turn off Wi-Fi after closing this dialog" option belongs to the dialog, so
+it does not act when no dialog appears.
+
+### Changed
+
+**The download prompt no longer repeats the filename.** It read
+`"Long Title - Author.epub" downloaded successfully. Open it now?`; it now reads
+`Book downloaded successfully. Open it now?`.
+
+**`1lib.sk` is kept in the mirror list** with a note. It is behind a browser check at the moment
+and auto-discovery skips it, but that is a setting the operator can change, and removing the entry
+would mean nobody ever tried it again.
+
+### Internal
+
+Test harnesses covering the HTTP transport, the retry dialog, the gettext shim and font coverage
+are now in the repository under `test/`, runnable with `./test/run.sh`. Two circular and
+duplicated pieces of the code were untangled: `config` and `cache` no longer require each other,
+and the twelve hand-written copies of the API header block are now one.
