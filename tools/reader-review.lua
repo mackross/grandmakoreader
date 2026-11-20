@@ -205,16 +205,85 @@ local function check()
     assert(place(1).place == "shop" and top().title == "Book Shop", "the left button opens the Book Shop")
     screenshot("01-book-shop")
     assert(place(3).place == "settings" and top().title == "Settings", "the right button opens Settings")
-    screenshot("01-settings")
-    local function row(text)
-        local first = top().layout[1][1]
-        assert(#top().item_table == 1 and first.text == text, "the screen offers only " .. text)
-        return first[1]
+    -- The rows on show from top to bottom, and the row with this text.
+    local function rows()
+        local texts = {}
+        for index, item in ipairs(top().item_table) do texts[index] = item.text end
+        return table.concat(texts, "|")
     end
+    local function row(text)
+        for _, entry in ipairs(top().layout) do
+            if entry[1].text == text then return entry[1][1], entry[1] end
+        end
+        error("the screen has no row " .. text)
+    end
+    local function refresh()
+        UIManager:broadcastEvent(Event:new("NotCharging"))
+        wait(0.15)
+        assert(top().place == "settings", "a refresh stays on the open place")
+    end
+    local function ready() return not select(2, row("Check for updates")).dim end
+    local function settings(message) -- the rows Settings should show, with this under Check for updates
+        return "Check for updates|" .. (message and message .. "|" or "") .. "Advanced"
+    end
+    -- The updater is switched off in this run, so a stand-in plays its part.
+    assert(rows() == settings("Updates are switched off on this Kindle.") and not ready(),
+        "without the updater Check for updates is greyed out and says why")
+    tapBounds(row("Check for updates").dimen)
+    assert(rows() == settings("Updates are switched off on this Kindle."), "a greyed-out row does nothing")
+    screenshot("01-settings-updates-off")
+    local asked, report = 0, nil
+    package.loaded["grandma/update"] = { check = function(_, callback)
+        asked, report = asked + 1, callback
+        callback("connecting")
+    end }
+    refresh()
+    assert(rows() == settings() and ready(), "Settings offers Check for updates and Advanced")
+    screenshot("01-settings")
+    tapBounds(row("Check for updates").dimen)
+    assert(asked == 1 and rows() == settings("Looking for the Wi‑Fi… this might take a minute."), "a tap starts a check")
+    assert(not ready(), "Check for updates is greyed out while a check runs")
+    screenshot("01-settings-connecting")
+    tapBounds(row("Check for updates").dimen)
+    assert(asked == 1, "a second tap does not start a second check")
+    report("checking")
+    refresh()
+    assert(rows() == settings("Checking for an update…") and not ready(), "a refresh keeps the check on show")
+    local endings = {
+        { "no wifi", "unreachable", "The Kindle couldn’t find the Wi‑Fi. Check the internet is on at home, then try again." },
+        { "no wifi", "off", "Updates need Wi‑Fi, but Wi‑Fi is turned off on this Kindle." },
+        { "no wifi", "asleep" },
+        { "no internet", nil, "The Kindle is on the Wi‑Fi but can’t reach the internet. Please try again later." },
+        { "failed", nil, "Updates aren’t working right now. Please try again later." },
+        { "low battery", nil, "The battery is too low to update. Charge the Kindle, then try again." },
+        { "rolled back", nil, "The newest update didn’t work on this Kindle, so it is keeping the one it has." },
+        { "downloaded", nil, "Found an update. The Kindle will restart in a moment." },
+        { "up to date", nil, "This Kindle is up to date." },
+    }
+    for index, ending in ipairs(endings) do
+        report(ending[1], ending[2])
+        assert(rows() == settings(ending[3]) and ready(), "Settings says how a check ended: " .. (ending[2] or ending[1]))
+        if index == 1 then screenshot("01-settings-no-wifi") end
+        if ending[1] == "rolled back" then screenshot("01-settings-rolled-back") end
+    end
+    screenshot("01-settings-up-to-date")
+    refresh()
+    assert(rows() == settings("This Kindle is up to date."), "a refresh keeps how the check ended")
+    place(2)
+    assert(place(3).place == "settings" and rows() == settings(), "leaving Settings clears how the check ended")
+    package.loaded["grandma/update"] = { check = function() error("deliberate") end }
+    refresh()
+    tapBounds(row("Check for updates").dimen)
+    assert(rows() == settings("Updates aren’t working right now. Please try again later."),
+        "a check that cannot start says so")
+    package.loaded["grandma/update"] = nil
+    refresh()
+
     local function advanced()
         tapBounds(row("Advanced").dimen)
         assert(top().place == "settings" and top().view.kind == "advanced" and top().title == "Advanced",
             "Advanced opens from Settings")
+        assert(rows() == "Exit to Kindle", "Advanced offers only Exit to Kindle")
     end
     local function askToExit()
         tapBounds(row("Exit to Kindle").dimen)
@@ -227,9 +296,7 @@ local function check()
     tapBounds(button("Cancel").dimen)
     assert(top().title == "Advanced" and not button("Cancel"), "Cancel stays in Advanced")
     assert(place(3).place == "settings" and not top().view, "the Settings button returns from Advanced")
-    UIManager:broadcastEvent(Event:new("NotCharging"))
-    wait(0.15)
-    assert(top().place == "settings", "a refresh stays on the open place")
+    refresh()
     assert(place(2).place == "shelf" and #top().item_table == 2, "the centre button returns to the shelf")
 
     -- Fourteen more titles make more than one shelf. Library order ignores a leading "The", "A", or "An".

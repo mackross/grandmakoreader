@@ -30,6 +30,16 @@ The updater borrows the radio from `patches/2-wifi.lua` with the `auto-update` n
 
 `tools/review-auto-update` covers download, staging, restart rules, rollback, reopening the book, and the Wi-Fi hand-off against a stand-in for GitHub. The real GitHub download over verified HTTPS was checked by hand in the simulator. Joining the saved network, the restart through Kindle's launcher script, and wake detection still need a check on the Oasis before it ships.
 
+## Check for updates from Settings
+
+Andrew asked for a button under Settings that pulls the latest update. It is the first row in Settings, above Advanced: **Check for updates**, with a row under it that says how the check is going and how it ended. It is a row like Advanced rather than an outlined button, so Settings stays one list. It runs the same check as the hourly one, through the same download, staging, and rollback, so it adds no second way to install. It is greyed out while a check runs, and when the updater is switched off it stays greyed out and says so.
+
+The wording is drafted, not yet approved. The Wi‑Fi failures reuse the book store lines Andrew approved, and the full list is in the [feature map](.agents/skills/verify-grandmakoreader/features/auto-update.md).
+
+After a download the screen says an update was found and KOReader restarts within five seconds. Settings is part of the home screen, so an hourly check that finds a release also restarts from Settings, as it does from the shelf. The alternative, waiting for the next wake while Settings is open, would leave a release waiting for no gain while Settings holds only rows to tap; revisit it when Settings gains a screen where a restart would lose typing.
+
+The row doubles as the diagnosis on the device. KOReader on a Kindle hides its storage from USB while it runs, so reading `crash.log` takes Exit to Kindle and a cable.
+
 ## Make the home screen a Book Shelf with a Book Shop and Settings beside it
 
 Three places sit along the bottom: Book Shop, Book Shelf in the centre and raised over the bar, and Settings. Book Shop shows “Coming soon” until it has content. Settings holds Advanced; see below. The shop and shelf icons were drawn for this project and live with the others in `patches/icons/`.

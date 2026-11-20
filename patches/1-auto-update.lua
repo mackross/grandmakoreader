@@ -146,6 +146,7 @@ local function get(path, accept)
 end
 
 -- Runs in a subprocess. Leaves `incoming` behind only when a whole release arrived intact and parses.
+-- Returns how the check ended, and a longer description for the log when the two differ.
 local function download()
     local hashes = {}
     local listing = get("/git/trees/" .. ref .. ":patches?recursive=1", "application/vnd.github+json")
@@ -160,7 +161,9 @@ local function download()
     local release = identity(hashes)
     local installed = installedHashes(live, "", {})
     if not next(hashes) or release == identity(installed) then return "up to date" end
-    if release == read(rejected_marker) then return "release was rolled back before, waiting for a new one" end
+    if release == read(rejected_marker) then
+        return "rolled back", "release was rolled back before, waiting for a new one"
+    end
 
     ffiutil.purgeDir(scratch)
     assert(lfs.mkdir(scratch))
@@ -175,7 +178,7 @@ local function download()
         write(scratch .. "/" .. path, content)
     end
     assert(os.rename(scratch, incoming))
-    return "downloaded a new release"
+    return "downloaded", "downloaded a new release"
 end
 
 local function start()
@@ -202,32 +205,47 @@ local function start()
     local last_tick = os.time()
     local next_check = last_tick + math.min(trial_seconds + 30, check_interval)
 
-    local function finishFetch()
+    -- Tells the Settings screen how the check it asked for is going. Its mistakes must not stop the updater.
+    local function tell(check, ...)
+        if not check.report then return end
+        local told, err = pcall(check.report, ...)
+        if not told then logger.warn("Auto-update:", err) end
+    end
+
+    -- `ending` is how the check ended when the download did not get to say so itself.
+    local function finishFetch(ending, reason)
         local finished = fetch
         fetch = nil
-        local reached = finished.result and ffiutil.readAllFromFD(finished.result) == "reached"
-        if not finished.wifi then
-            if finished.turned_wifi_on then require("ui/network/manager"):turnOffWifi() end
-            return
+        local answer = finished.result and ffiutil.readAllFromFD(finished.result) or ""
+        local reached = answer:find("^reached ") ~= nil
+        if finished.wifi then
+            finished.wifi:release("auto-update")
+            -- The settings screen reads this. Sleep cuts requests short, which says nothing about the internet.
+            if finished.result and not finished.interrupted then
+                finished.wifi:report(reached)
+            end
+        elseif finished.turned_wifi_on then
+            require("ui/network/manager"):turnOffWifi()
         end
-        finished.wifi:release("auto-update")
-        -- The settings screen reads this. Sleep cuts requests short, which says nothing about the internet.
-        if finished.result and not finished.interrupted then
-            finished.wifi:report(reached)
+        if not ending then
+            ending = answer:match(" (.+)$") or "failed"
+            if ending == "failed" and not reached then ending = "no internet" end
         end
+        tell(finished, ending, reason)
     end
 
     -- 2-wifi.lua owns the radio. If it is missing or failed to load, switch Wi-Fi here so a fix can still arrive.
-    local function startFetch(now)
-        local started = { deadline = now + fetch_seconds, wifi = package.loaded["grandma/wifi"] }
+    local function startFetch(now, report)
+        local started = { deadline = now + fetch_seconds, wifi = package.loaded["grandma/wifi"], report = report }
         fetch = started
+        tell(started, "connecting")
         if started.wifi then
             started.wifi:need("auto-update", fetch_seconds, function(connected, reason)
                 if fetch ~= started then return end
                 started.connected = connected
                 if not connected then
                     logger.info("Auto-update: no Wi-Fi,", reason)
-                    finishFetch()
+                    finishFetch("no wifi", reason)
                 end
             end)
         else
@@ -241,6 +259,11 @@ local function start()
         if fetch.wifi then return fetch.connected end
         local NetworkMgr = require("ui/network/manager")
         return NetworkMgr:isWifiOn() and NetworkMgr:isConnected()
+    end
+
+    local function batteryIsLow()
+        local percent = Device:hasBattery() and Device:getPowerDevice():getCapacity()
+        return percent and percent >= 0 and percent < 10
     end
 
     local function step(now)
@@ -258,13 +281,18 @@ local function start()
                     ffiutil.terminateSubProcess(fetch.pid)
                 end
             elseif now > fetch.deadline then
-                finishFetch()
+                finishFetch("no wifi", "unreachable")
             elseif connected() then
                 local pid, result = ffiutil.runInSubProcess(function(_, write_end)
-                    logger.info("Auto-update:", select(2, pcall(download)))
-                    ffiutil.writeToFD(write_end, reached_internet and "reached" or "none", true)
+                    local ok, ending, description = pcall(download)
+                    logger.info("Auto-update:", description or ending)
+                    local answer = (reached_internet and "reached " or "none ") .. (ok and ending or "failed")
+                    ffiutil.writeToFD(write_end, answer, true)
                 end, true)
-                if pid then fetch.pid, fetch.result = pid, result end
+                if pid then
+                    fetch.pid, fetch.result = pid, result
+                    tell(fetch, "checking")
+                end
             end
         elseif asleep then
             return -- nothing starts while the screensaver is up
@@ -284,8 +312,7 @@ local function start()
             end
         elseif now >= next_check then
             next_check = now + check_interval
-            local percent = Device:hasBattery() and Device:getPowerDevice():getCapacity()
-            if percent and percent >= 0 and percent < 10 then
+            if batteryIsLow() then
                 logger.info("Auto-update: battery below 10%, skipping this check")
             else
                 startFetch(now)
@@ -297,12 +324,13 @@ local function start()
     local function tick()
         local now = os.time()
         local ok, err = pcall(step, now)
-        local delay = tick_seconds
+        -- Someone is watching a check asked for from Settings, so it moves along every second.
+        local delay = fetch and fetch.report and 1 or tick_seconds
         if not ok then
             logger.warn("Auto-update:", err)
             if fetch then
                 if fetch.pid then ffiutil.terminateSubProcess(fetch.pid) end
-                pcall(finishFetch)
+                pcall(finishFetch, "failed")
             end
             delay = check_interval
         end
@@ -310,6 +338,29 @@ local function start()
         UIManager:scheduleIn(delay, tick)
     end
     UIManager:scheduleIn(tick_seconds, tick)
+
+    -- For the Settings screen's button: checks now instead of at the next hour. `report` hears "connecting",
+    -- then "checking" once Wi-Fi is up, then how the check ended: "up to date", "downloaded" (the restart
+    -- follows by itself), "rolled back", "no internet", "failed", "low battery", or "no wifi" with the
+    -- Wi-Fi module's reason.
+    package.loaded["grandma/update"] = {
+        check = function(_, report)
+            local now = os.time()
+            if fetch then
+                fetch.report = report
+                tell(fetch, fetch.pid and "checking" or "connecting")
+            elseif lfs.attributes(incoming, "mode") then
+                report("downloaded")
+            elseif batteryIsLow() then
+                report("low battery")
+            else
+                next_check = now + check_interval
+                startFetch(now, report)
+            end
+            UIManager:unschedule(tick)
+            tick()
+        end,
+    }
 end
 
 local applyPatches = userpatch.applyPatches

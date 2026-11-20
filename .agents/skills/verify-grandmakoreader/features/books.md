@@ -6,7 +6,7 @@ The Books screen lists supported titles from one folder. Returning from the read
 
 - `shelf-launch` opens the fixed library at startup, even with an older startup preference.
 - `shelf-refresh` updates the list after unplugging and fits the active orientation.
-- `places` shows Book Shop, Book Shelf, and Settings along the bottom, with the open one filled in.
+- `places` shows Book Shop, Book Shelf, and Settings along the bottom, with the open one filled in. Settings lists [Check for updates](auto-update.md) and Advanced.
 - `exit-to-kindle` leaves KOReader from Settings, Advanced, Exit to Kindle, after a confirmation.
 - `shelf-order` files titles the way a library does, ignoring a leading The, A, or An.
 - `shelf-arrows` names the open shelf in the title and each neighbour on an arrow, and stops at both ends. Each end takes as many letters as tell it from the neighbouring shelf, such as **Books B–Jam** beside **Jan–T** in portrait.

@@ -148,6 +148,9 @@ launch crash-3-after quit:20 60
 expect 'the next launch rolls back' has 'did not survive its first launch'
 expect 'the previous release runs again' has 'VERSION v2'
 expect 'the failed release is not downloaded again' has 'release was rolled back before'
+launch crash-4-settings check:15 60
+expect 'Settings says the newest update did not work' \
+    has 'REVIEW SETTINGS The newest update didn’t work on this Kindle, so it is keeping the one it has.'
 
 echo '== A release arrives during a book'
 release v5
@@ -196,27 +199,55 @@ if [ "$wifi_module" = yes ]; then
     expect 'the check reaches the stand-in' has 'Auto-update: up to date'
     expect 'the need is released, the radio turns off, and the problem clears' \
         in_order 'needs=auto-update internet=false' 'REVIEW WIFI off needs= internet=true'
+    launch wifi-5-settings-unreachable checknowifi:15 60
+    expect 'Settings says it is looking for the Wi-Fi, then that it could not find it' in_order \
+        'REVIEW SETTINGS Looking for the Wi‑Fi… this might take a minute.' \
+        'REVIEW SETTINGS The Kindle couldn’t find the Wi‑Fi. Check the internet is on at home, then try again.'
     config 10
 else
     expect 'without the Wi-Fi module the updater switches the radio itself' has 'needs=no-module'
 fi
 
-echo '== Downloads that must be refused'
+echo '== A check asked for from Settings'
+config 3600 # the first check by itself comes after 90 seconds, so these launches see only the one asked for
 release v8
+launch settings-1-download check 60
+expect 'a new release is downloaded at once' has 'Auto-update: downloaded a new release'
+expect 'Settings says an update was found' \
+    has 'REVIEW SETTINGS Found an update. The Kindle will restart in a moment.'
+expect 'KOReader restarts from Settings' restarted
+: > "$control/requests.log"
+launch settings-2-unchanged check:20 60
+expect 'the new release runs' has 'VERSION v8'
+expect 'the check is made at once' has 'Auto-update: up to date'
+expect 'Settings says the Kindle is up to date' has 'REVIEW SETTINGS This Kindle is up to date.'
+expect 'KOReader keeps running' exited 0
+: > "$control/requests.log"
+launch settings-3-battery checklow:10 60
+expect 'Settings says the battery is too low' \
+    has 'REVIEW SETTINGS The battery is too low to update. Charge the Kindle, then try again.'
+expect 'no request is made' unrequested git/trees
+config 10
+
+echo '== Downloads that must be refused'
+release v9
 touch "$control/corrupt"
 launch refused-1-altered quit:20 60
 expect 'an altered file is refused' has 'did not arrive intact'
 expect 'nothing is staged' unstaged
-release v9
+release v10
 echo 'local = 1' > "$control/release/2-syntax.lua"
 launch refused-2-syntax quit:20 60
 expect 'a file that does not parse is refused' has '[string "2-syntax.lua"]'
 expect 'nothing is staged' unstaged
-release v10
+release v11
 config 10 wrong-token
 launch refused-3-token quit:20 60
 expect 'a token is sent when set, and its rejection is logged' has ': 401'
 expect 'nothing is staged' unstaged
+launch refused-3-token-settings check:15 60
+expect 'Settings says updates are not working' \
+    has 'REVIEW SETTINGS Updates aren’t working right now. Please try again later.'
 if [ "$wifi_module" = yes ]; then
     expect 'a rejected token is not an internet problem' lacks 'internet=false'
 fi
@@ -230,6 +261,9 @@ expect 'KOReader keeps running' exited 0
 if [ "$wifi_module" = yes ]; then
     expect 'an unanswered request records an internet problem' in_order 'internet=true' 'internet=false'
 fi
+launch refused-5-no-answer-settings check:15 60
+expect 'Settings says the internet cannot be reached' \
+    has 'REVIEW SETTINGS The Kindle is on the Wi‑Fi but can’t reach the internet. Please try again later.'
 
 if [ "$failures" -gt 0 ]; then
     printf 'Auto-update review failed: %s check(s). Logs: %s\n' "$failures" "$output"

@@ -5,7 +5,7 @@ GrandmaKOReader is a set of Lua user patches for KOReader on Kindle Oasis. Edit 
 ## Reader behavior
 
 - Launch into a single `books` folder at the root of Kindle storage. A tap on a title opens the book.
-- The home screen has three places along the bottom: Book Shop, Book Shelf, and Settings. Book Shop is a placeholder. Settings holds Advanced, whose Exit to Kindle asks before leaving KOReader. The shelf files titles in library order through `patches/library.lua`. With more than one shelf, the title names the open shelf’s letters, such as “Books B–L”, and an arrow on each side names its neighbour. Find a book offers a letter, Read lately, or a typed title or author.
+- The home screen has three places along the bottom: Book Shop, Book Shelf, and Settings. Book Shop is a placeholder. Settings lists Check for updates, with a row under it saying how the check went, and Advanced, whose Exit to Kindle asks before leaving KOReader. The shelf files titles in library order through `patches/library.lua`. With more than one shelf, the title names the open shelf’s letters, such as “Books B–L”, and an arrow on each side names its neighbour. Find a book offers a letter, Read lately, or a typed title or author.
 - While reading, the page buttons turn pages, and so do left and right swipes. A tap anywhere opens the reading menu. Up and down swipes do nothing. The only persistent footer is the battery warning below 10%.
 - Open another book, in the reading menu, saves the current place. Put back on shelf, in the end-of-book dialog, marks the book read and resets it to the beginning. Removal requires confirmation, and Cancel returns to the end-of-book choices.
 - Keep the user’s chosen labels and copy when changing layouts. Check portrait and landscape when changing any reader surface.
@@ -15,7 +15,7 @@ GrandmaKOReader is a set of Lua user patches for KOReader on Kindle Oasis. Edit 
 - The Kindle installs whatever `patches/` holds on `main` through [the updater](patches/1-auto-update.lua), so a push to `main` is a release to the Kindle. Push to `main` only when Andrew asks, after the review passes, and keep unfinished work on another branch. See [README](README.md#update-the-kindle-over-wi-fi).
 - Every file under `patches/` ships, subfolders included. Put a resource a patch needs, such as an icon, in a subfolder of `patches/` and load it relative to the patch, as `2-reading-controls.lua` does. Keep development-only code in `tools/` and `plugins/`.
 - A bad reader patch rolls back on the device. A bad updater cannot be fixed remotely, so change `1-auto-update.lua` rarely.
-- Run `tools/review-auto-update` after changing the updater, the Wi-Fi module's `need`, `release`, `isNeeded`, or `report`, or the shelf's widget name. A new full-screen feature needs no change: the updater restarts at once only from the shelf.
+- Run `tools/review-auto-update` after changing the updater, the Wi-Fi module's `need`, `release`, `isNeeded`, or `report`, or the shelf's widget name. Run it too after changing the Settings button or `grandma/update`. A new full-screen feature needs no change: the updater restarts at once only from the home screen, which is the shelf, Book Shop, or Settings.
 
 ## Verification
 

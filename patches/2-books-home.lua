@@ -29,6 +29,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local ffiUtil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
+local logger = require("logger")
 local util = require("util")
 
 -- The helpers and icons this patch loads ship in the folder it runs from.
@@ -609,18 +610,68 @@ local function confirmExit()
     UIManager:show(dialog)
 end
 
+-- What Settings says under Check for updates, by how 1-auto-update.lua reports the check. A check cut
+-- short by sleep ("asleep" or "ended") says nothing.
+local update_messages = {
+    connecting = "Looking for the Wi‑Fi… this might take a minute.",
+    checking = "Checking for an update…",
+    ["up to date"] = "This Kindle is up to date.",
+    downloaded = "Found an update. The Kindle will restart in a moment.",
+    ["rolled back"] = "The newest update didn’t work on this Kindle, so it is keeping the one it has.",
+    unreachable = "The Kindle couldn’t find the Wi‑Fi. Check the internet is on at home, then try again.",
+    off = "Updates need Wi‑Fi, but Wi‑Fi is turned off on this Kindle.",
+    ["no internet"] = "The Kindle is on the Wi‑Fi but can’t reach the internet. Please try again later.",
+    failed = "Updates aren’t working right now. Please try again later.",
+    ["low battery"] = "The battery is too low to update. Charge the Kindle, then try again.",
+}
+local update_state -- how the check asked for from Settings is going, or how it ended
+local settingsItems
+
+local function updateReported(state, reason)
+    update_state = state == "no wifi" and reason or state
+    if home and home.place == "settings" and not home.view then
+        home:switchItemTable(nil, settingsItems())
+    end
+end
+
 -- The rows of Settings, or of Advanced within it.
-local function settingsItems(view)
+function settingsItems(view)
     if view then
         return { { text = "Exit to Kindle", callback = confirmExit } }
     end
-    return { { text = "Advanced", callback = function() showHome("settings", nil, { kind = "advanced" }) end } }
+    -- The updater provides this once every patch has loaded, and only when updates are switched on.
+    local Update = package.loaded["grandma/update"]
+    local ready = Update ~= nil and update_state ~= "connecting" and update_state ~= "checking"
+    local message = Update and update_messages[update_state]
+    if not Update then message = "Updates are switched off on this Kindle." end
+    -- The row is greyed out while a check runs. Under it, a row that is not a button says how the check went.
+    local items = { {
+        text = "Check for updates",
+        dim = not ready,
+        select_enabled = ready,
+        callback = function()
+            if not pcall(Update.check, Update, updateReported) then
+                logger.warn("Settings: the update check could not start")
+                updateReported("failed")
+            end
+        end,
+    } }
+    if message then
+        items[2] = { text = message, select_enabled = false }
+    end
+    items[#items + 1] = { text = "Advanced", callback = function() showHome("settings", nil, { kind = "advanced" }) end }
+    return items
 end
 
 -- Shows a place. On the shelf, view is nil for every book, or { kind = "find" } for the Find screen,
 -- { kind = "recent" } for Read lately, or { kind = "search", text = ... } for books with that name
 -- or author. In Settings, { kind = "advanced" } is the Advanced screen.
 function showHome(place_id, focused_file, view)
+    -- How the last check ended is news only until Settings is left.
+    local stays_in_settings = home and home.place == "settings" and place_id == "settings"
+    if not stays_in_settings and update_state ~= "connecting" and update_state ~= "checking" then
+        update_state = nil
+    end
     if home then
         UIManager:close(home)
     end
@@ -654,6 +705,8 @@ function showHome(place_id, focused_file, view)
             with_bottom_line = true,
         },
         books = books,
+        -- What Settings says about a check may take more lines than a title on the shelf is given.
+        items_max_lines = place_id == "settings" and 4 or nil,
         -- The shop is a placeholder until its contents are decided.
         item_table = place_id == "settings" and settingsItems(view)
             or not books and { { text = "Coming soon", select_enabled = false } }

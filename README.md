@@ -64,7 +64,9 @@ A new release is downloaded in the background, only the files that changed are f
 
 A release whose patch fails to load, or that takes KOReader down in its first minute, is replaced by the previous one and is not downloaded again; publish a different commit to retry. A patch that loads but misbehaves is not detected, so publish a fix. The updater is itself a patch and updates with the rest, but a release that breaks the updater cannot be undone remotely. `koreader/crash.log` on the Kindle records every check on a line starting `Auto-update:`.
 
-Run `tools/review-auto-update .koreader/review/auto-update` after changing the updater or the Wi-Fi module. It drives download, restart, rollback, and the Wi-Fi hand-off against a stand-in for GitHub and takes about ten minutes.
+To check without waiting, tap **Settings**, then **Check for updates**. The line under the button says how the check went, which is also the quickest way to see why an update is not arriving.
+
+Run `tools/review-auto-update .koreader/review/auto-update` after changing the updater, the Settings button, or the Wi-Fi module. It drives download, restart, rollback, the check from Settings, and the Wi-Fi hand-off against a stand-in for GitHub and takes about twelve minutes.
 
 The repository is public, so the Kindle holds no credential. GitHub allows 60 anonymous requests an hour from one network; a check is one request and an update adds one per changed file. For a private repository, add `token = "github_pat_…"` with a fine-grained token limited to this repository and **Contents: Read-only**.
 

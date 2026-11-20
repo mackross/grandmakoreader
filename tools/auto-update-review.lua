@@ -124,6 +124,53 @@ function actions.nowifi(seconds)
     actions.quit(seconds)
 end
 
+local function find(widget, matches)
+    if matches(widget) then return widget end
+    for _, child in ipairs(widget) do
+        local found = type(child) == "table" and find(child, matches)
+        if found then return found end
+    end
+end
+
+-- Prints what Settings says under Check for updates whenever that changes.
+local last_said
+local function watchSettings()
+    local top = UIManager:getTopmostVisibleWidget()
+    local said = "(another screen)"
+    if top and top.place == "settings" and not top.view then
+        local message = top.item_table[2]
+        said = message.select_enabled == false and message.text or ""
+    end
+    if said ~= last_said then
+        last_said = said
+        say("SETTINGS", said)
+    end
+    UIManager:scheduleIn(0.2, watchSettings)
+end
+
+-- Opens Settings and chooses Check for updates, as a reader would. Without seconds it waits for the restart.
+function actions.check(seconds)
+    local top = UIManager:getTopmostVisibleWidget()
+    find(top, function(widget) return type(widget.place) == "table" and widget.place.id == "settings" end):onActivate()
+    wait(1)
+    watchSettings()
+    top = UIManager:getTopmostVisibleWidget()
+    assert(top.item_table[1].text == "Check for updates")
+    top:onMenuSelect(top.item_table[1])
+    if seconds ~= "" then actions.quit(seconds) end
+end
+
+function actions.checklow(seconds)
+    battery = 9
+    actions.check(seconds)
+end
+
+function actions.checknowifi(seconds)
+    require("ui/network/manager").isConnected = function() return false end
+    require("grandma/wifi").connect_timeout = 3
+    actions.check(seconds)
+end
+
 UIManager:scheduleIn(0.5, resume, coroutine.create(function()
     watchWifi()
     wait(3)
