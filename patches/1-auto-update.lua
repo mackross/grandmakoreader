@@ -97,12 +97,22 @@ local function rollBack()
 end
 
 -- KOReader lists the late patches after this file returns, so a swap here takes effect on this launch.
-local on_trial = false
-if lfs.attributes(incoming, "mode") == "directory" then
+-- This file is already running by then, so after a swap it runs the release's own copy in its place,
+-- with "installed" to say the swap is done. Every later version must keep answering to that word.
+-- A release whose updater is missing or fails there goes back, like one whose patch fails to load.
+local on_trial = ... == "installed"
+if on_trial then
+    -- The updater of the previous release made the swap and started the trial.
+elseif lfs.attributes(incoming, "mode") == "directory" then
     if install(incoming, previous) then
         write(trial_marker, "")
-        on_trial = true
         logger.info("Auto-update: installed a new release")
+        local updater, err = loadfile(live .. "/1-auto-update.lua")
+        local took_over = updater ~= nil
+        if updater then took_over, err = pcall(updater, "installed") end
+        if took_over then return end
+        logger.warn("Auto-update: rolling back, the release's updater failed:", err)
+        rollBack()
     end
 elseif lfs.attributes(trial_marker, "mode") then
     logger.warn("Auto-update: the last release did not survive its first launch, rolling back")
@@ -368,7 +378,15 @@ function userpatch.applyPatches(priority)
     applyPatches(priority)
     if priority == userpatch.late then
         local started, err = pcall(start)
-        if not started then logger.warn("Auto-update:", err) end
+        if not started then
+            logger.warn("Auto-update:", err)
+            if on_trial then
+                -- Without its updater a release could never be replaced, so it does not stay.
+                local UIManager = require("ui/uimanager")
+                rollBack()
+                UIManager:nextTick(UIManager.restartKOReader, UIManager)
+            end
+        end
     elseif priority == userpatch.before_exit then
         os.remove(trial_marker) -- an orderly exit is not a crash
     end

@@ -62,11 +62,11 @@ The Kindle checks 90 seconds after KOReader starts and then at most once an hour
 
 A new release is downloaded in the background, only the files that changed are fetched, each file is compared with GitHub's hash, each Lua file is parsed, and only a complete release is staged. KOReader restarts to apply it straight away when the shelf is the front screen and nothing else is using Wi-Fi. With a book or any other screen open it waits for the next wake, and a book reopens at the same page.
 
-A release whose patch fails to load, or that takes KOReader down in its first minute, is replaced by the previous one and is not downloaded again; publish a different commit to retry. A patch that loads but misbehaves is not detected, so publish a fix. The updater is itself a patch and updates with the rest, but a release that breaks the updater cannot be undone remotely. `koreader/crash.log` on the Kindle records every check on a line starting `Auto-update:`.
+A release whose patch fails to load, or that takes KOReader down in its first minute, is replaced by the previous one and is not downloaded again; publish a different commit to retry. A patch that loads but misbehaves is not detected, so publish a fix. The updater is itself a patch and updates with the rest. A release's own updater takes over on the launch that installs it, and a release whose updater is missing, fails as it loads, or fails as it starts is replaced by the previous one in the same way. An updater that starts but then stops checking is not detected and cannot be undone remotely. Keep the file named `1-auto-update.lua`. `koreader/crash.log` on the Kindle records every check on a line starting `Auto-update:`.
 
 To check without waiting, tap **Settings**, then **Check for updates**. The line under the button says how the check went, which is also the quickest way to see why an update is not arriving.
 
-Run `tools/review-auto-update .koreader/review/auto-update` after changing the updater, the Settings button, or the Wi-Fi module. It drives download, restart, rollback, the check from Settings, and the Wi-Fi hand-off against a stand-in for GitHub and takes about twelve minutes.
+Run `tools/review-auto-update .koreader/review/auto-update` after changing the updater, the Settings button, or the Wi-Fi module. It drives download, restart, rollback, the check from Settings, and the Wi-Fi hand-off against a stand-in for GitHub and takes about fifteen minutes.
 
 The repository is public, so the Kindle holds no credential. GitHub allows 60 anonymous requests an hour from one network; a check is one request and an update adds one per changed file. For a private repository, add `token = "github_pat_…"` with a fine-grained token limited to this repository and **Contents: Read-only**.
 

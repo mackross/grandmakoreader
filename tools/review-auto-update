@@ -175,6 +175,49 @@ expect 'KOReader restarts once the shelf is back' in_order 'REVIEW STILL COVERED
 launch screen-2-after quit:10 60
 expect 'the new release runs' has 'VERSION v6'
 
+echo '== A release that changes the updater'
+updater="$control/release/1-auto-update.lua"
+release u1
+printf '\nprint("UPDATER u1")\n' >> "$updater"
+launch updater-1-download idle 60
+expect 'the release is staged' staged
+launch updater-2-install check:20 60
+expect 'the new release runs' has 'VERSION u1'
+expect 'its own updater takes over on the first launch' has 'UPDATER u1'
+expect 'that launch is on trial' has 'REVIEW TRIAL true'
+expect 'the check from Settings works on that launch' has 'REVIEW SETTINGS This Kindle is up to date.'
+expect 'every patch loads' lacks 'Patching failed'
+release u2
+{ echo 'error("deliberate updater")'; cat "$root/patches/1-auto-update.lua"; } > "$updater"
+launch updater-3-download idle 60
+expect 'a release whose updater fails as it loads is staged' staged
+launch updater-4-load-fails quit:20 60
+expect 'the failure is noticed' has "rolling back, the release's updater failed"
+expect 'the previous release runs without a restart' has 'VERSION u1'
+expect 'the failed release does not run' lacks 'VERSION u2'
+expect 'the failed release is not downloaded again' has 'release was rolled back before'
+expect 'KOReader keeps running' exited 0
+release u3
+awk '{ print } /^local function start\(\)$/ { print "    error(\"deliberate start\")" }' \
+    "$root/patches/1-auto-update.lua" > "$updater"
+launch updater-5-download idle 60
+expect 'a release whose updater fails as it starts is staged' staged
+launch updater-6-start-fails idle 60
+expect 'the failure is noticed' has 'deliberate start'
+expect 'KOReader restarts at once' restarted
+launch updater-7-after quit:20 60
+expect 'the previous release runs again' has 'VERSION u1'
+expect 'the failed release is not downloaded again' has 'release was rolled back before'
+release u4
+rm "$updater"
+launch updater-8-download idle 60
+expect 'a release without the updater is staged' staged
+launch updater-9-missing quit:20 60
+expect 'the release is refused' has "rolling back, the release's updater failed"
+expect 'the previous release runs' has 'VERSION u1'
+expect 'the updater is still installed' [ -f "$home/patches/1-auto-update.lua" ]
+expect 'nothing is left staged' unstaged
+
 echo '== Low battery'
 release v7
 launch battery-1-low lowbattery:20 60

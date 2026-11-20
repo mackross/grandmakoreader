@@ -17,6 +17,7 @@ Status: [`patches/1-auto-update.lua`](../../../../patches/1-auto-update.lua) is 
 - `update-restart-wake` waits for the next wake when a book or any other screen is open, or something else holds Wi‑Fi. A book reopens at the same page.
 - `update-trial` keeps the previous release and treats the first minute of a new one as a trial.
 - `update-rollback` returns to the previous release when a patch fails to load or KOReader dies during the trial, and does not download that release again.
+- `update-handover` runs a release's own `1-auto-update.lua` on the launch that installs it, in place of the previous release's, so a patch can rely on what its updater provides. A release whose updater is missing or fails as it loads goes back without a restart; one whose updater fails as it starts goes back with one.
 
 ## How to get to it (user POV)
 
@@ -38,7 +39,7 @@ Update:check(function(state, reason) ... end)
 
 Preconditions: the doctor passes and `python3` is available. [`tools/auto-update-stub.py`](../../../../tools/auto-update-stub.py) stands in for GitHub on a local port, and the run relaunches KOReader by hand where Kindle's launcher would on exit code 85.
 
-- Run `tools/review-auto-update "$evidence/auto-update"`. It takes about ten minutes and publishes the working tree's patches as a series of fixture releases. Require `Auto-update review passed`. Each launch writes a log named after its step, such as `reading-2-reopen.log`, with `Auto-update:` lines from the updater and `REVIEW` lines from [the driver](../../../../tools/auto-update-review.lua).
+- Run `tools/review-auto-update "$evidence/auto-update"`. It takes about fifteen minutes and publishes the working tree's patches as a series of fixture releases. Require `Auto-update review passed`. Each launch writes a log named after its step, such as `reading-2-reopen.log`, with `Auto-update:` lines from the updater and `REVIEW` lines from [the driver](../../../../tools/auto-update-review.lua).
 - The Wi‑Fi checks run when `patches/2-wifi.lua` is present. Without it the run checks that the updater switches the radio itself.
 - The run also opens Settings and presses **Check for updates** against the real updater: a download and restart from Settings, an unchanged release, a low battery, a rolled-back release, a rejected token, no answer, and no Wi‑Fi. Those launches print `REVIEW SETTINGS` and the message whenever it changes.
 - `tools/review-koreader` covers the screen itself with a stand-in for the updater: every message, the greyed-out row, a refresh, and leaving Settings. See `01-settings.png`, `01-settings-connecting.png`, `01-settings-no-wifi.png`, `01-settings-rolled-back.png`, `01-settings-up-to-date.png`, and `01-settings-updates-off.png` in each orientation.
@@ -72,5 +73,6 @@ Preconditions: the doctor passes and `python3` is available. [`tools/auto-update
 ## Gotchas
 
 - The headless simulator reports a 0% battery, so the driver sets 75%.
-- A release that loads but misbehaves is not detected. A release that breaks the updater itself cannot be undone remotely.
+- A release that loads but misbehaves is not detected. An updater that loads and starts but then stops checking cannot be undone remotely.
+- An updater from before `update-handover` cannot hand over. On the one launch where it installs a release that has the Settings row, the row says updates are switched off while that older updater keeps checking; the next restart clears it.
 - The trial is one minute, so the first-launch step waits it out.

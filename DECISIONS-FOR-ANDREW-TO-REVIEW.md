@@ -40,6 +40,12 @@ After a download the screen says an update was found and KOReader restarts withi
 
 The row doubles as the diagnosis on the device. KOReader on a Kindle hides its storage from USB while it runs, so reading `crash.log` takes Exit to Kindle and a cable.
 
+## Let a release’s own updater take over as it is installed
+
+Andrew saw Settings say “Updates are switched off on this Kindle.” on a Kindle that was updating. The updater that installs a release is the previous release’s, already running when it swaps the folder, so the new Settings row found no check to call until the next restart. The updater now runs the release’s own copy in its place straight after the swap. A patch can therefore rely on the updater it ships with.
+
+This also puts the updater inside the trial. A release whose updater is missing, fails as it loads, or fails as it starts now goes back to the previous release and is not downloaded again; before, such a release passed its trial on the old updater and then left the Kindle unable to update. The cost is a rule: the file must stay named `1-auto-update.lua`, and every later version must accept the word the previous one hands it.
+
 ## Make the home screen a Book Shelf with a Book Shop and Settings beside it
 
 Three places sit along the bottom: Book Shop, Book Shelf in the centre and raised over the bar, and Settings. Book Shop shows “Coming soon” until it has content. Settings holds Advanced; see below. The shop and shelf icons were drawn for this project and live with the others in `patches/icons/`.
