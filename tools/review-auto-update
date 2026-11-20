@@ -1,0 +1,238 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    echo 'Usage: tools/review-auto-update <log directory>' >&2
+    exit 2
+fi
+
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+state="$root/.koreader"
+runtime=$("$root/tools/setup-koreader" --runtime)
+
+mkdir -p "$1" "$state/review-runs"
+output=$(CDPATH='' cd "$1" && pwd)
+scratch=$(mktemp -d "$state/review-runs/update.XXXXXX")
+control="$scratch/control"
+home="$scratch/home"
+server=
+trap '[ -z "$server" ] || kill "$server" 2>/dev/null; rm -rf "$scratch"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+export KO_HOME="$home" XDG_DOCUMENTS_DIR="$home/books"
+export SDL_VIDEO_DRIVER=dummy SDL_RENDER_DRIVER=software
+export EMULATE_READER_DPI=300 EMULATE_READER_W=1264 EMULATE_READER_H=1680
+export KO_DEV_DEVICE_NAME=Kindle
+unset KO_DEV_BATTERY_PERCENT KO_DEV_SMOKE SDL_FULLSCREEN EMULATE_READER_FORCE_PORTRAIT EMULATE_READER_VIEWPORT
+
+mkdir -p "$control" "$XDG_DOCUMENTS_DIR"
+cp "$root/fixtures/Oasis Sample.html" "$XDG_DOCUMENTS_DIR/"
+printf 'return { color_rendering = false }\n' > "$home/settings.reader.lua"
+
+python3 "$root/tools/auto-update-stub.py" "$control" &
+server=$!
+tries=0
+until [ -s "$control/port" ]; do
+    tries=$((tries + 1))
+    if [ "$tries" -gt 50 ]; then echo 'The GitHub stand-in did not start.' >&2; exit 1; fi
+    sleep 0.1
+done
+
+config() { # seconds between checks, then a token when one should be sent
+    printf 'return { api = "http://127.0.0.1:%s", interval = %s%s }\n' \
+        "$(cat "$control/port")" "$1" "${2:+, token = \"$2\"}" > "$home/auto-update.lua"
+}
+
+release() { # version: publishes the working tree's patches as a new release
+    rm -rf "$control/release" "$control/corrupt"
+    cp -R "$root/patches" "$control/release"
+    cp "$root/tools/auto-update-review.lua" "$control/release/2-zz-auto-update-review.lua"
+    printf 'print("VERSION %s")\n' "$1" > "$control/release/2-version.lua"
+}
+
+launch() { # log name, review action, time limit in seconds
+    log="$output/$1.log"
+    code=0
+    (
+        cd "$runtime"
+        KO_UPDATE_REVIEW=$2 perl -e 'alarm shift; exec @ARGV or die "Cannot start KOReader: $!\n";' "$3" ./luajit reader.lua
+    ) > "$log" 2>&1 || code=$?
+}
+
+failures=0
+expect() { # description, then a command that must succeed
+    description=$1
+    shift
+    if "$@" > /dev/null 2>&1; then
+        printf 'PASS %s\n' "$description"
+    else
+        printf 'FAIL %s (%s)\n' "$description" "${log##*/}"
+        failures=$((failures + 1))
+    fi
+}
+has() { grep -Fq -- "$1" "$log"; }
+lacks() { ! grep -Fq -- "$1" "$log"; }
+exited() { [ "$code" = "$1" ]; }
+restarted() { [ "$code" = 85 ]; } # the code Kindle's launcher relaunches on
+staged() { [ -d "$home/patches.new" ]; }
+unstaged() { [ ! -e "$home/patches.new" ]; }
+absent() { [ ! -e "$1" ]; }
+requested() { grep -Fq -- "$1" "$control/requests.log"; }
+unrequested() { ! requested "$1"; }
+in_order() {
+    awk -v first="$1" -v second="$2" \
+        'index($0, first) { seen = 1 } seen && index($0, second) { found = 1 } END { exit !found }' "$log"
+}
+
+wifi_module=no
+if [ -e "$root/patches/2-wifi.lua" ]; then wifi_module=yes; fi
+printf 'Logs: %s\nWi-Fi module present: %s\n' "$output" "$wifi_module"
+
+config 10
+release v1
+printf 'print("REMOVED LATER")\n' > "$control/release/2-review-removed.lua"
+cp -R "$control/release" "$home/patches"
+: > "$home/patches/.DS_Store"
+
+echo '== A release arrives on the shelf'
+launch shelf-1-unchanged quit:20 60
+expect 'an unchanged release is reported up to date' has 'Auto-update: up to date'
+expect 'an unchanged release downloads no files' unrequested git/blobs
+expect 'requests identify KOReader' requested "user-agent='KOReader"
+expect 'requests are anonymous without a token' unrequested authorization=sent
+expect 'KOReader keeps running' exited 0
+release v2
+printf 'print("ADDED v2")\n' > "$control/release/2-added.lua"
+mkdir "$control/release/review-folder"
+echo 'not Lua' > "$control/release/review-folder/note.txt"
+: > "$control/requests.log"
+launch shelf-2-download idle 60
+expect 'a new release is downloaded' has 'Auto-update: downloaded a new release'
+expect 'only the three changed files are downloaded' [ "$(grep -c git/blobs "$control/requests.log")" = 3 ]
+expect 'the shelf restarts by itself' restarted
+expect 'the release is staged, not yet running' staged
+launch shelf-3-first-launch quit:72 120
+expect 'the new release runs' has 'VERSION v2'
+expect 'an added patch loads' has 'ADDED v2'
+expect 'a file in a subfolder arrives' grep -Fqx 'not Lua' "$home/patches/review-folder/note.txt"
+expect 'a removed patch is removed' absent "$home/patches/2-review-removed.lua"
+expect 'every patch loads' lacks 'Patching failed'
+expect 'the shelf opens' has 'REVIEW TOP books_home'
+expect 'the first launch starts on trial' has 'REVIEW TRIAL true'
+expect 'the trial ends after a minute' absent "$home/patches.trial"
+expect 'the previous release is kept' grep -Fq 'VERSION v1' "$home/patches.old/2-version.lua"
+expect 'nothing is left staged' unstaged
+
+echo '== A release with a patch that fails to load'
+release v3
+echo 'error("deliberate")' > "$control/release/2-broken.lua"
+launch load-failure-1-download idle 60
+expect 'the release is staged' staged
+launch load-failure-2-install idle 60
+expect 'the failure is noticed' has 'rolling back, 2-broken.lua failed to load'
+expect 'KOReader restarts at once' restarted
+launch load-failure-3-after quit:20 60
+expect 'the previous release runs again' has 'VERSION v2'
+expect 'the failed release does not run' lacks 'VERSION v3'
+expect 'the failed release is not downloaded again' has 'release was rolled back before'
+expect 'nothing is left staged' unstaged
+
+echo '== A release that takes KOReader down in its first minute'
+release v4
+launch crash-1-download idle 60
+expect 'the release is staged' staged
+launch crash-2-install crash:5 60
+expect 'the release ran and KOReader died' exited 3
+launch crash-3-after quit:20 60
+expect 'the next launch rolls back' has 'did not survive its first launch'
+expect 'the previous release runs again' has 'VERSION v2'
+expect 'the failed release is not downloaded again' has 'release was rolled back before'
+
+echo '== A release arrives during a book'
+release v5
+launch reading-1-download read 120
+expect 'the book is open at page 2' has 'REVIEW PAGE 2'
+expect 'reading is not interrupted' has 'REVIEW STILL READING 2'
+expect 'nothing happens while asleep' has 'REVIEW STILL ASLEEP true'
+expect 'KOReader restarts after waking' in_order 'REVIEW AWAKE' 'exit code: 85'
+launch reading-2-reopen quit:10 60
+expect 'the new release runs' has 'VERSION v5'
+expect 'the book reopens at page 2' has 'REVIEW PAGE 2'
+expect 'quitting during the trial is not treated as a crash' absent "$home/patches.trial"
+launch reading-3-next-launch quit:10 60
+expect 'the release is kept' has 'VERSION v5'
+expect 'the next launch opens the shelf' has 'REVIEW TOP books_home'
+
+echo '== A release arrives under another screen'
+release v6
+launch screen-1-download cover 120
+expect 'KOReader waits while another screen covers the shelf' has 'REVIEW STILL COVERED'
+expect 'KOReader restarts once the shelf is back' in_order 'REVIEW STILL COVERED' 'exit code: 85'
+launch screen-2-after quit:10 60
+expect 'the new release runs' has 'VERSION v6'
+
+echo '== Low battery'
+release v7
+launch battery-1-low lowbattery:20 60
+expect 'the check is skipped below 10%' has 'Auto-update: battery below 10%'
+expect 'nothing is downloaded' unstaged
+
+if [ "$wifi_module" = yes ]; then
+    echo '== Wi-Fi module'
+    launch wifi-1-held hold 120
+    expect 'KOReader waits while something else needs Wi-Fi' has 'REVIEW STILL HELD'
+    expect 'KOReader restarts once Wi-Fi is free' in_order 'REVIEW STILL HELD' 'exit code: 85'
+    launch wifi-2-after quit:10 60
+    expect 'the new release runs' has 'VERSION v7'
+    config 40
+    launch wifi-3-unreachable nowifi:62 120
+    expect 'a failed connection is logged with its reason' has 'Auto-update: no Wi-Fi, unreachable'
+    expect 'no request is made' lacks 'Auto-update: up to date'
+    expect 'the radio ends off with a problem recorded' \
+        [ "$(grep -F 'REVIEW WIFI' "$log" | tail -n 1)" = 'REVIEW WIFI off needs= internet=false' ]
+    launch wifi-4-need quit:72 120
+    expect 'the check registers a need' has 'REVIEW WIFI on needs=auto-update'
+    expect 'the check reaches the stand-in' has 'Auto-update: up to date'
+    expect 'the need is released, the radio turns off, and the problem clears' \
+        in_order 'needs=auto-update internet=false' 'REVIEW WIFI off needs= internet=true'
+    config 10
+else
+    expect 'without the Wi-Fi module the updater switches the radio itself' has 'needs=no-module'
+fi
+
+echo '== Downloads that must be refused'
+release v8
+touch "$control/corrupt"
+launch refused-1-altered quit:20 60
+expect 'an altered file is refused' has 'did not arrive intact'
+expect 'nothing is staged' unstaged
+release v9
+echo 'local = 1' > "$control/release/2-syntax.lua"
+launch refused-2-syntax quit:20 60
+expect 'a file that does not parse is refused' has '[string "2-syntax.lua"]'
+expect 'nothing is staged' unstaged
+release v10
+config 10 wrong-token
+launch refused-3-token quit:20 60
+expect 'a token is sent when set, and its rejection is logged' has ': 401'
+expect 'nothing is staged' unstaged
+if [ "$wifi_module" = yes ]; then
+    expect 'a rejected token is not an internet problem' lacks 'internet=false'
+fi
+kill "$server"
+wait "$server" 2>/dev/null || true
+server=
+config 10
+launch refused-4-no-answer quit:20 60
+expect 'an unanswered request is logged' has 'connection refused'
+expect 'KOReader keeps running' exited 0
+if [ "$wifi_module" = yes ]; then
+    expect 'an unanswered request records an internet problem' in_order 'internet=true' 'internet=false'
+fi
+
+if [ "$failures" -gt 0 ]; then
+    printf 'Auto-update review failed: %s check(s). Logs: %s\n' "$failures" "$output"
+    exit 1
+fi
+printf 'Auto-update review passed\nLogs: %s\n' "$output"

@@ -45,4 +45,5 @@ The command exits KOReader and removes its temporary fixture profiles at the end
 
 - `tools/setup-koreader --doctor` verifies the installed revision and SDL.
 - `tools/review-koreader "$evidence"` drives the full feature map in both orientations.
+- `tools/review-auto-update "$evidence/auto-update"` drives the updater against a stand-in for GitHub. It takes about ten minutes; see [automatic updates](features/auto-update.md).
 - `tools/koreader smoke oasis3` checks the desktop plugin entry point and produces a separate PNG. Use the full review for reader changes.

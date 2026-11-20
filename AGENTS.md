@@ -9,6 +9,13 @@ GrandmaKOReader is a set of Lua user patches for KOReader on Kindle Oasis. Edit 
 - Open another book, in the reading menu, saves the current place. Put back on shelf, in the end-of-book dialog, marks the book read and resets it to the beginning. Removal requires confirmation, and Cancel returns to the end-of-book choices.
 - Keep the user’s chosen labels and copy when changing layouts. Check portrait and landscape when changing any reader surface.
 
+## Releases
+
+- The Kindle installs whatever `patches/` holds on `main` through [the updater](patches/1-auto-update.lua), so a push to `main` is a release to the Kindle. Push to `main` only when Andrew asks, after the review passes, and keep unfinished work on another branch. See [README](README.md#update-the-kindle-over-wi-fi).
+- Every file under `patches/` ships, subfolders included. Put a resource a patch needs, such as an icon, in a subfolder of `patches/` and load it relative to the patch, as `2-reading-controls.lua` does. Keep development-only code in `tools/` and `plugins/`.
+- A bad reader patch rolls back on the device. A bad updater cannot be fixed remotely, so change `1-auto-update.lua` rarely.
+- Run `tools/review-auto-update` after changing the updater, the Wi-Fi module's `need`, `release`, `isNeeded`, or `report`, or the shelf's widget name. A new full-screen feature needs no change: the updater restarts at once only from the shelf.
+
 ## Verification
 
 - Use [verify-grandmakoreader](.agents/skills/verify-grandmakoreader/SKILL.md) to drive the running application and capture screenshots. Start with the feature map when checking a specific behavior.

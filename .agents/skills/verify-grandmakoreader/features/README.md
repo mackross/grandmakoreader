@@ -8,3 +8,4 @@ Use the [launch, doctor, and evidence workflow](../SKILL.md) to prepare the runt
 - [Low battery](battery.md) covers the warning threshold and recovery.
 - [End of book](end-of-book.md) covers the four choices, confirmation, and persisted effects.
 - [Wi‑Fi](wifi.md) covers connecting while something needs it, disconnecting when idle, failures, and sleep.
+- [Automatic updates](auto-update.md) covers checking, downloading, restarting, and rolling back. It has its own run, `tools/review-auto-update`.

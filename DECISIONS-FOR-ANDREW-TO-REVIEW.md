@@ -8,9 +8,9 @@ Orbs use the released Linux KOReader `v2026.07.1` on x86-64 or ARM64. The existi
 
 The Orb runs KOReader with disposable copies of sample books and captures its framebuffer. The feature map checks persisted reading position, completion status, and removal alongside the screens. Touch and page inputs travel through SDL, while battery, frontlight, and sleep use the simulator. Physical buttons, light output, suspend, and e-ink rendering still need a pass on the Oasis.
 
-## Keep the GitHub repository private
+## Make the GitHub repository public
 
-Andrew chose `mackross/grandmakoreader` as the GitHub repository. Use private visibility so access to the reader and its development setup stays under Andrew’s control. An Amp project can clone it through Andrew’s GitHub connection. [Amp project setup](https://ampcode.com/docs/orbs/getting-started)
+Andrew chose `mackross/grandmakoreader` as the GitHub repository and first kept it private. He then made it public so the Kindle can fetch updates without a credential stored on it. Nothing secret belongs in the repository, including Wi‑Fi passwords and tokens. An Amp project clones it through Andrew’s GitHub connection. [Amp project setup](https://ampcode.com/docs/orbs/getting-started)
 
 ## Use icon-pack icons in the reading menu
 
@@ -19,3 +19,13 @@ The reading menu uses Material Symbols for Change Font and the light, Phosphor f
 ## Keep Wi‑Fi on only while something needs it
 
 `patches/2-wifi.lua` owns the Wi‑Fi radio. The updater and the future book store register named needs with timeouts. Wi‑Fi turns off 10 seconds after the last need ends and when the Kindle sleeps. A need gives up after 60 seconds without a connection, counted separately for each need. Needs form a set rather than a stack, because downloads and timeouts end in any order. At startup, the module turns off Wi‑Fi left on by the Kindle. On a Kindle it connects through `wifid` with `restoreWifiAsync`, which joins saved networks without KOReader’s 20-second blocking scan and popups. So the reader’s home network must be saved, either through the stock Kindle UI or the planned setup screen. A failed connection shows nothing unless the book store asked for it. Turning Wi‑Fi off blocks everything, updates included, and lifts by itself after 24 hours, so a Kindle can never be cut off from fixes for longer than a day. The updater uses `Wifi:need` and switches the radio itself only when this module is missing.
+
+## Update the Kindle from `main`
+
+The Kindle mirrors `patches/` from `main` of the public repository, with no credential on the device. The whole folder ships, subfolders included, so a patch and its resources (such as `patches/icons/`) always arrive together; that makes `patches/` the one place for anything the Kindle needs. Andrew chose `main` over a separate `release` branch, so publishing is any push to `main` and there is no second step to forget. The cost is that `main` must always be fit for the Kindle: every thread's push ships within about an hour of the next wake, and unfinished work belongs on another branch. This needs no server, build step, or release artifact. The device compares GitHub's file hashes with its own and downloads only the files that changed. GitHub allows 60 anonymous requests an hour from one network; a check is one request and an update adds one per changed file. A read-only token in `auto-update.lua` is still supported, for a private repository or a shared network that runs out of anonymous requests. [Setup and behavior](README.md#update-the-kindle-over-wi-fi)
+
+The updater applies a release by restarting KOReader. It restarts at once only when the shelf is the front screen and nothing else holds Wi-Fi, so it never restarts under the planned book store, settings, or setup screens or during a book download. Otherwise it waits for the next wake. It rolls back a release that fails to load or dies in its first minute. It only updates the Lua patches. KOReader itself, books, and settings stay as shipped.
+
+The updater borrows the radio from `patches/2-wifi.lua` with the `auto-update` need and tells that module whether the internet answered, which feeds the planned settings line. It keeps its own radio switching only for when that module is missing or fails to load, so a fix can still arrive. Turning Wi-Fi off for a day stops updates for that day. Checks are skipped below 10% battery, the same threshold as the low-battery warning.
+
+`tools/review-auto-update` covers download, staging, restart rules, rollback, reopening the book, and the Wi-Fi hand-off against a stand-in for GitHub. The real GitHub download over verified HTTPS was checked by hand in the simulator. Joining the saved network, the restart through Kindle's launcher script, and wake detection still need a check on the Oasis before it ships.
