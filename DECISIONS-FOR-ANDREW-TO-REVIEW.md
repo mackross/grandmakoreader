@@ -36,7 +36,11 @@ Three places sit along the bottom: Book Shop, Book Shelf in the centre and raise
 
 ## File the shelf in library order and name shelves by letter
 
-Titles follow the ALA Filing Rules in `patches/library.lua`: a leading The, A, or An is ignored, words file one at a time, and numbers come before letters. The stock page controls are gone. The title names the open shelf, such as “Books B–L”, and an arrow on each side shows the neighbouring shelf’s letters. Shelves stop at both ends. The labels use only the first letter, so a letter that fills more than one shelf repeats; that case is being worked on separately.
+Titles follow the ALA Filing Rules in `patches/library.lua`: a leading The, A, or An is ignored, words file one at a time, and numbers come before letters. The stock page controls are gone. The title names the open shelf, such as “Books B–L”, and an arrow on each side shows the neighbouring shelf’s letters. Shelves stop at both ends.
+
+## Label shelves like encyclopedia spines when a letter fills more than one
+
+Each end of a shelf’s letters takes as many letters as it needs to differ from the neighbouring shelf, as on encyclopedia volumes such as “S–Sn” and “So–Sz”. A library with many S titles reads “C–Sea”, “Sec–St”, and “Sw–W” in portrait, so the title and both arrows stay distinct, and a letter that goes on past the shelf Find opens shows on that shelf’s right arrow. An end stops at three letters, or at fewer on every shelf when the widest labels would not fit beside the title. Two titles that agree in their first three letters on either side of a shelf break, such as The Secret Adversary and The Secret Agent, give both shelves the same end, such as “Ro–Sec” beside “Sec–So”. Shelves keep a fixed number of books rather than breaking at letters, so none is left part-empty.
 
 ## Find a book by letter, by Read lately, or by typing, with no sort switch
 

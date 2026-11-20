@@ -283,12 +283,48 @@ function Home:_recalculateDimen(no_recalculate_dimen)
     end
 end
 
--- The letters a shelf's first and last titles are filed under, such as "A–L".
+-- A shelf's letters, such as "A–L". Like an encyclopedia's spines, an end takes as many letters as
+-- it needs to differ from the neighbouring shelf, as in "S–Sec" beside "Sen–T", up to self.label_letters.
 function Home:shelfLetters(page)
-    local shelf = self.page_items[page]
-    local first = Library.initial(self.item_table[shelf[1]].text)
-    local last = Library.initial(self.item_table[shelf[#shelf]].text)
+    local function title(page_index, last)
+        local shelf = self.page_items[page_index]
+        return self.item_table[shelf[last and #shelf or 1]].text
+    end
+    local first_title, last_title = title(page), title(page, true)
+    local first, last = Library.prefix(first_title, 1), Library.prefix(last_title, 1)
+    if page > 1 then
+        first = select(2, Library.beginnings(title(page - 1, true), first_title, self.label_letters))
+    end
+    if page < self.page_num then
+        last = Library.beginnings(last_title, title(page + 1), self.label_letters)
+    end
+    -- An end never stops short of the other, as in "Sen–Sil" rather than "Sen–S".
+    if #last < #first and first:sub(1, #last) == last then
+        last = Library.prefix(last_title, #util.splitToChars(first))
+    end
     return first == last and first or first .. "–" .. last
+end
+
+-- Whether every shelf's title fits between the arrows to its neighbours.
+function Home:shelfLabelsFit()
+    local bar = self.title_bar
+    for page = 1, self.page_num do
+        local title = TextWidget:new{
+            text = self.view and self.title or self.title .. " " .. self:shelfLetters(page),
+            face = bar.title_face,
+        }
+        local room = (bar.width - title:getSize().w) / 2 - Size.padding.fullscreen - Screen:scaleBySize(8)
+        title:free()
+        for _, neighbour in ipairs{ page - 1, page + 1 } do
+            if neighbour >= 1 and neighbour <= self.page_num then
+                local arrow = ShelfArrow:new{ text = self:shelfLetters(neighbour) }
+                local width = arrow:getSize().w
+                arrow:free()
+                if width > room then return false end
+            end
+        end
+    end
+    return true
 end
 
 function Home:updatePageInfo(...)
@@ -312,6 +348,13 @@ function Home:updatePageInfo(...)
     end
     if self.page_num <= 1 then return end
 
+    -- Up to three letters at each end, or fewer when that is what fits, the same on every shelf.
+    if not self.label_letters then
+        self.label_letters = 3
+        while self.label_letters > 1 and not self:shelfLabelsFit() do
+            self.label_letters = self.label_letters - 1
+        end
+    end
     -- With more than one shelf, an arrow on each side names its neighbour. On the full shelf the
     -- title names the open one.
     local bar = self.title_bar

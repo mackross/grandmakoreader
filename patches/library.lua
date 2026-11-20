@@ -92,6 +92,45 @@ function Library.initial(title)
     return Utf8Proc.uppercase_dumb(word:match("[%z\1-\127\194-\244][\128-\191]*") or "")
 end
 
+-- A filed title as characters, such as { "s", "e", "c", ... } for "The Secret Garden".
+local function filedCharacters(title)
+    local characters = {}
+    for character in table.concat(filingWords(title), " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        characters[#characters + 1] = character
+    end
+    return characters
+end
+
+-- The first count characters, with each word capitalised, such as "Sec" for "The Secret Garden".
+local function beginning(characters, count)
+    local shown = {}
+    for index = 1, math.min(count, #characters) do
+        local character = characters[index]
+        shown[index] = (index == 1 or characters[index - 1] == " ") and Utf8Proc.uppercase_dumb(character)
+            or character
+    end
+    return (table.concat(shown):gsub("%s+$", ""))
+end
+
+--- The first characters of a filed title, such as "Sil" for "Silas Marner" and a count of 3.
+function Library.prefix(title, count)
+    return beginning(filedCharacters(title), count)
+end
+
+--- The shortest beginnings that tell two neighbouring titles apart, like the letters on an
+-- encyclopedia's spines, such as "Sec" and "Sen" for "The Secret Garden" and "Sense and Sensibility".
+-- Neither runs past longest characters, so titles that agree that far get the same beginning.
+function Library.beginnings(before, after, longest)
+    local before_characters, after_characters = filedCharacters(before), filedCharacters(after)
+    local count = 1
+    while count < longest and after_characters[count] and before_characters[count] == after_characters[count] do
+        count = count + 1
+    end
+    -- A space alone tells nothing apart on a label, so the later title shows its next letter too.
+    local after_count = after_characters[count] == " " and math.min(count + 1, longest) or count
+    return beginning(before_characters, count), beginning(after_characters, after_count)
+end
+
 --- Whether a title contains the given words, whatever their capitals, accents, or punctuation.
 function Library.contains(title, text)
     local wanted = table.concat(plainWords(text), " ")

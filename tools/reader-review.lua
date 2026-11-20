@@ -232,13 +232,12 @@ local function check()
     assert(top().place == "settings", "a refresh stays on the open place")
     assert(place(2).place == "shelf" and #top().item_table == 2, "the centre button returns to the shelf")
 
-    -- Fourteen more titles make two shelves. Library order ignores a leading "The", "A", or "An".
+    -- Fourteen more titles make more than one shelf. Library order ignores a leading "The", "A", or "An".
     local library_order = {
-        "Bleak House", "Cranford", "Dracula", "Emma", "An Evening Walk", "Frankenstein", "Great Expectations",
-        "The Hobbit", "Ivanhoe", "Jane Eyre", "Kidnapped", "Lorna Doone", "Middlemarch", "Oasis Sample",
-        "Persuasion", "A Tale of Two Cities",
+        "Bleak House", "Cranford", "Dracula", "Emma", "An Evening Walk", "Frankenstein", "The Go-Between",
+        "Great Expectations", "Ivanhoe", "Jane Eyre", "Kidnapped", "Mansfield Park", "Martin Chuzzlewit",
+        "Oasis Sample", "Persuasion", "A Tale of Two Cities",
     }
-    local filed_under = "BCDEEFGHIJKLMOPT"
     -- Two of them are FictionBook files, which name their author inside the file.
     local written_by = { ["Jane Eyre"] = { "Charlotte", "Brontë" }, ["Persuasion"] = { "Jane", "Austen" } }
     local extras, authored = {}, {}
@@ -267,26 +266,21 @@ local function check()
     local shelved = {}
     for index, item in ipairs(top().item_table) do shelved[index] = item.text end
     assert(table.concat(shelved, "|") == table.concat(library_order, "|"), "the books stand in library order")
+    -- A shelf holds twelve books in portrait and seven in landscape, so G or M runs onto a second shelf.
+    -- An end of a shelf's letters takes as many letters as it needs to differ from its neighbour.
     local shelf_size = #top().page_items[1]
-    local function letters(first, last)
-        first, last = filed_under:sub(first, first), filed_under:sub(last, last)
-        return first == last and first or first .. "–" .. last
-    end
+    local shelf_letters = ({ [12] = { "B–Man", "Mar–T" }, [7] = { "B–Go", "Gr–O", "P–T" } })[shelf_size]
+    assert(shelf_letters, "a shelf holds twelve books in portrait or seven in landscape")
     local last = top().page_num
-    assert(last > 1, "sixteen books need more than one shelf")
-    local function lettersOf(page)
-        if page >= 1 and page <= last then
-            return letters((page - 1) * shelf_size + 1, math.min(page * shelf_size, #library_order))
-        end
-    end
+    assert(last == #shelf_letters, "sixteen books fill the expected number of shelves")
     local function shelf(page, message)
         local previous, next_shelf
         for _, arrow in ipairs(top().shelf_arrows) do
             if arrow.points_left then previous = arrow.text else next_shelf = arrow.text end
         end
         assert(not top().view and top().page == page and top().page_num == last and button("Find a book")
-            and top().title_bar.title_widget.text == "Books " .. lettersOf(page)
-            and previous == lettersOf(page - 1) and next_shelf == lettersOf(page + 1), message)
+            and top().title_bar.title_widget.text == "Books " .. shelf_letters[page]
+            and previous == shelf_letters[page - 1] and next_shelf == shelf_letters[page + 1], message)
     end
     shelf(1, "the first shelf is titled by its letters and points right to the second")
     screenshot("01-first-shelf")
@@ -311,7 +305,7 @@ local function check()
     shelf(last, "the page-forward key turns to the next shelf")
     swipe(width / 2, height / 2, 240, 0)
     shelf(last - 1, "a swipe turns back a shelf")
-    print("PASS shelves: library order, lettered arrows, both ends stop")
+    print("PASS shelves: library order, lettered arrows that tell shelves of one letter apart, both ends stop")
 
     local function title() return top().title_bar.title_widget.text end
     local function find()
@@ -330,6 +324,11 @@ local function check()
     find()
     tapBounds(button("E").dimen)
     shelf(1, "E opens the shelf that holds Emma")
+    find()
+    local continued = shelf_size == 12 and "M" or "G"
+    tapBounds(button(continued).dimen)
+    shelf(1, continued .. " opens its first shelf, whose right arrow shows the letter going on")
+    assert(top().next_shelf.text:sub(1, 1) == continued, "the right arrow starts with the same letter")
 
     find()
     tapBounds(button("Read lately").dimen)
