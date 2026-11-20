@@ -420,23 +420,28 @@ local function check()
     screenshot("02-reading")
     print("PASS books: launch, refresh after unplugging, rotation, tap to open")
 
-    tap(width - 10, height / 2)
-    tap(width / 2, height - 10)
-    swipe(width / 2, height / 2, -240, 0)
-    assert(not reader.reading_controls and reader:getCurrentPage() == 1, "reading taps and centre swipes do nothing")
-    for _, edge in ipairs{
-        { 4, height / 2, 250, 0 },
-        { width - 4, height / 2, -250, 0 },
+    for _, vertical in ipairs{
+        { width / 2, height / 2, 0, -240 },
+        { width / 2, height / 2, 0, 240 },
         { width / 2, 4, 0, 250 },
         { width / 2, height - 4, 0, -250 },
     } do
-        swipe(unpack(edge))
-        local menu = assert(reader.reading_controls, "SDL touch swipe opens the menu from every edge")
+        swipe(unpack(vertical))
+        assert(not reader.reading_controls and reader:getCurrentPage() == 1, "up and down swipes do nothing")
+    end
+    swipe(width * 0.7, height / 2, -240, 0)
+    assert(not reader.reading_controls and reader:getCurrentPage() == 2, "a left swipe turns forward one page")
+    swipe(width * 0.3, height / 2, 240, 0)
+    assert(not reader.reading_controls and reader:getCurrentPage() == 1, "a right swipe turns back one page")
+    for _, point in ipairs{ { width / 2, height / 2 }, { width - 10, 10 }, { 10, height - 10 } } do
+        tap(unpack(point))
+        local menu = assert(reader.reading_controls, "a tap anywhere on the page opens the menu")
         assert(menu.panel == "menu" and menu.bounds.x == 0 and menu.bounds.w == math.floor(width * 0.8))
         tap(width - 10, height / 2)
-        assert(not reader.reading_controls)
+        assert(not reader.reading_controls and reader:getCurrentPage() == 1,
+            "a tap beside the menu closes it without reopening it or turning the page")
     end
-    print("PASS reading input: ordinary taps and centre swipes ignored, all four edges open the sidebar")
+    print("PASS reading input: taps open the sidebar, side swipes turn pages, up and down swipes ignored")
 
     local function menuAction(index)
         local bounds = assert(reader.reading_controls).bounds
@@ -447,7 +452,7 @@ local function check()
         tap(width * (column - 0.5) / 2, bounds.y + bounds.h * (row - 0.5) / 2)
     end
     local function sidebar()
-        swipe(4, height / 2, 250, 0)
+        tap(width / 2, height / 2)
         assert(reader.reading_controls and reader.reading_controls.panel == "menu")
     end
 

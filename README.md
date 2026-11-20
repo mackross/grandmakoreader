@@ -29,7 +29,7 @@ The bootstrap checks the download’s SHA-256, extracts the KOReader AppImage wi
 
 Put your `*.koplugin` directory under [plugins](plugins) and quit and relaunch KOReader after editing Lua. The launcher links that folder into each profile. The fixture library and KOReader settings are scoped to `.koreader/` in the workspace.
 
-In the interactive simulator, Home lists the books in `.koreader/run/<profile>/books/`. On a Kindle the folder is `books` at the root of USB storage. Open **Oasis Sample** and use **Page Up** and **Page Down** to simulate the page-turn buttons. In the desktop window, click near any edge and drag inward to open the reading controls. To preview the battery warning, run `KO_DEV_BATTERY_PERCENT=9 tools/koreader run oasis3`.
+In the interactive simulator, Home lists the books in `.koreader/run/<profile>/books/`. On a Kindle the folder is `books` at the root of USB storage. Open **Oasis Sample** and use **Page Up** and **Page Down** to simulate the page-turn buttons. In the desktop window, click the page to open the reading controls, or drag left or right to turn a page. To preview the battery warning, run `KO_DEV_BATTERY_PERCENT=9 tools/koreader run oasis3`.
 
 The smoke command opens the sample document, invokes the plugin’s menu callback, asserts the framebuffer dimensions and DPI, and prints the PNG path. The KOReader log is in the same test directory as the screenshots folder. Kindle firmware, actual e-ink refresh, and physical button behavior still need verification on the Oasis.
 

@@ -19,7 +19,7 @@ The Books screen lists supported titles from one folder. Returning from the read
 - Start KOReader. Tap **An Evening Walk**.
 - With more than one shelf of books, tap the arrow beside the title to change shelf. Tap **Find a book**, then a letter, **Read lately**, or **Type a name**.
 - Tap **Settings**, **Advanced**, then **Exit to Kindle**. Choose **Cancel** to stay, or **Exit to Kindle** to leave KOReader.
-- Swipe inward from an edge while reading, choose **Open another book**, then reopen the same title.
+- Tap the page while reading, choose **Open another book**, then reopen the same title.
 
 ## Driving it with SDL
 

@@ -10,8 +10,8 @@ The reading menu adjusts the frontlight and lets the reader put the Kindle to sl
 
 ## How to get to it (user POV)
 
-- From a book, swipe inward. Tap **Turn on light**, make any adjustment, and tap **Done**. Reopen the menu and tap **Adjust light**, then **Turn off**.
-- Swipe inward and select **Stop for now**. Use the power button to wake a Kindle, or F2 in the desktop preview.
+- From a book, tap the page. Tap **Turn on light**, make any adjustment, and tap **Done**. Reopen the menu and tap **Adjust light**, then **Turn off**.
+- Tap the page and select **Stop for now**. Use the power button to wake a Kindle, or F2 in the desktop preview.
 
 ## Driving it with SDL
 

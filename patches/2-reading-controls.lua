@@ -301,23 +301,18 @@ function ReaderUI:onBatteryBannerChanged()
     end
 end
 
-local function isInwardSwipe(gesture)
-    if gesture.ges ~= "swipe" or (gesture.distance or 0) < Screen:scaleBySize(28) then return false end
-    local width, height = Screen:getWidth(), Screen:getHeight()
-    local inset = math.floor(math.min(width, height) * 0.08)
-    local x, y = gesture.pos.x, gesture.pos.y
-    local direction = gesture.direction
-    return (x < inset and direction:find("east", 1, true))
-        or (x >= width - inset and direction:find("west", 1, true))
-        or (y < inset and direction:find("south", 1, true))
-        or (y >= height - inset and direction:find("north", 1, true))
-end
+-- A finger moved left goes forward a page, as on a printed book.
+local swipe_pages = { west = 1, east = -1 }
 
 local handleEvent = ReaderUI.handleEvent
 function ReaderUI:handleEvent(event)
     if event.handler == "onGesture" then
-        if isInwardSwipe(event.args[1]) and not self.reading_controls then
+        -- Up and down swipes, holds, and other gestures leave the page alone.
+        local gesture = event.args[1]
+        if gesture.ges == "tap" and not self.reading_controls then
             self:showReadingControls("menu")
+        elseif gesture.ges == "swipe" and swipe_pages[gesture.direction] then
+            handleEvent(self, Event:new("GotoViewRel", swipe_pages[gesture.direction]))
         end
         return true
     end
