@@ -91,7 +91,7 @@ local function showEndOfBookDialog(self, offset)
             end,
         },
         {
-            text = "Throw it away",
+            text = "Throw away",
             font_size = 30,
             height = button_height,
             callback = function()
@@ -101,7 +101,7 @@ local function showEndOfBookDialog(self, offset)
             end,
         },
         {
-            text = "Read it again now",
+            text = "Read again now",
             font_size = 30,
             height = button_height,
             callback = function()
@@ -135,7 +135,7 @@ local function showEndOfBookDialog(self, offset)
     end
     dialog = ButtonDialog:new{
         name = "end_document",
-        title = "It seems you've reached the end. What should we do with this book?",
+        title = "It seems you've reached the end. What do you want to do with this book?",
         title_align = "center",
         title_face = Font:getFace("smalltfont", 34),
         title_padding = screen:scaleBySize(landscape and 16 or 40),
@@ -144,6 +144,19 @@ local function showEndOfBookDialog(self, offset)
         width_factor = 0.94,
         buttons = buttons,
     }
+    -- Page back dismisses the choices like "Go back to last page"; page forward does nothing.
+    function dialog:handleEvent(event)
+        if event.handler == "onKeyPress" then
+            local key = event.args[1].key
+            if key == "LPgBack" or key == "RPgBack" then
+                UIManager:close(self)
+                return true
+            elseif key == "LPgFwd" or key == "RPgFwd" then
+                return true
+            end
+        end
+        return ButtonDialog.handleEvent(self, event)
+    end
     dialog.movable:setMovedOffset(offset)
     UIManager:show(dialog)
 end

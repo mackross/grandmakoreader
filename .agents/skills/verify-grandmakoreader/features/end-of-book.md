@@ -7,12 +7,13 @@ Turning forward from the last page offers four choices. Portrait stacks the choi
 - `finish-shelve` marks the book read, saves exactly zero progress, and returns to Books.
 - `finish-restart` immediately opens the first page.
 - `finish-stay` dismisses the choices and leaves the last page open.
+- `finish-keys`: page back dismisses the choices on the last page, and page forward leaves them open.
 - `finish-remove` replaces the choices with a same-size confirmation. Cancel restores the choices. **Yes, it's rubbish** removes the fixture from the library.
 
 ## How to get to it (user POV)
 
 - Continue to the last page and press the forward page button again.
-- Choose **Put back on shelf**, **Read it again now**, **Go back to last page**, or **Throw it away**.
+- Choose **Put back on shelf**, **Read again now**, **Go back to last page**, or **Throw away**.
 
 ## Driving it with SDL
 
