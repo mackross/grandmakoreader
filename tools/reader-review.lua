@@ -637,6 +637,8 @@ local function check()
     sidebar()
     menuAction(4)
     assert(Device.screen_saver_mode and not reader.reading_controls, "Stop for now activates the simulator screensaver")
+    assert(require("ui/screensaver").image_file:find("/sleep%-screen/grandmas%-magic%-pirate%-book%.png$"),
+        "the sleep screen shows Grandma's Magic Pirate Book")
     assert((slept_answer == true or slept_answer == "asleep") and not next(Wifi.needs) and not NetworkMgr:isWifiOn(),
         "sleep ends every Wi-Fi need and turns the radio off")
     screenshot("07-stop-for-now")
