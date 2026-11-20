@@ -14,7 +14,6 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
 local ReaderUI = require("apps/reader/readerui")
-local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
@@ -23,6 +22,8 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local Screen = Device.screen
 local power = Device:getPowerDevice()
 local page_keys = { LPgFwd = true, LPgBack = true, RPgFwd = true, RPgBack = true }
+-- Menu icons ship in the icons folder next to this patch.
+local icons_dir = debug.getinfo(1, "S").source:match("^@(.*/)") .. "icons/"
 
 if Device:isSDL() and os.getenv("KO_DEV_DEVICE_NAME") == "Kindle" then
     -- Exercise the same frontlight actions with SDL's in-memory hardware.
@@ -55,7 +56,7 @@ local ActionRow = InputContainer:extend{}
 
 function ActionRow:init()
     local inset = Screen:scaleBySize(26)
-    local icon_size = math.min(Screen:scaleBySize(42), math.floor(self.dimen.h * 0.48))
+    local icon_size = math.min(Screen:scaleBySize(52), math.floor(self.dimen.h * 0.48))
     self.hit_area = self.dimen:copy()
     self.ges_events.Activate = { GestureRange:new{ ges = "tap", range = self.hit_area } }
     self[1] = LeftContainer:new{
@@ -63,12 +64,12 @@ function ActionRow:init()
         HorizontalGroup:new{
             align = "center",
             HorizontalSpan:new{ width = inset },
-            IconWidget:new{ icon = self.icon, width = icon_size, height = icon_size, alpha = true },
+            IconWidget:new{ file = icons_dir .. self.icon .. ".svg", width = icon_size, height = icon_size, alpha = true },
             HorizontalSpan:new{ width = inset },
             TextBoxWidget:new{
                 text = self.text,
                 width = self.dimen.w - icon_size - 3 * inset,
-                face = Font:getFace("smalltfont", 28),
+                face = Font:getFace("smalltfont", 40),
             },
         },
     }
@@ -165,25 +166,25 @@ function Controls:buildSidebar(width, height)
     if self.reader.rolling then
         actions[#actions + 1] = {
             text = "Change Font",
-            icon = "appbar.textsize",
+            icon = "change-font",
             callback = function() self.reader:showReadingControls("font") end,
         }
     end
     if Device:hasFrontlight() then
         actions[#actions + 1] = {
             text = power:isFrontlightOn() and "Turn off light" or "Turn on light",
-            icon = "appbar.contrast",
+            icon = "light",
             callback = function() self:toggleLight() end,
         }
     end
     actions[#actions + 1] = {
-        text = "Put book down",
-        icon = "book.opened",
+        text = "Stop for now",
+        icon = "stop-for-now",
         callback = function() self:putBookDown() end,
     }
     actions[#actions + 1] = {
-        text = "Put back on shelf",
-        icon = "home",
+        text = "Open another book",
+        icon = "open-another-book",
         callback = function() self:putBackOnShelf() end,
     }
 
@@ -204,8 +205,8 @@ function Controls:buildSidebar(width, height)
         end
         group[#group + 1] = ActionRow:new(action)
     end
-    self.bounds = Geom:new{ x = width - panel_width, y = 0, w = panel_width, h = height }
-    return RightContainer:new{
+    self.bounds = Geom:new{ x = 0, y = 0, w = panel_width, h = height }
+    return LeftContainer:new{
         dimen = Geom:new{ w = width, h = height },
         allow_mirroring = false,
         FrameContainer:new{

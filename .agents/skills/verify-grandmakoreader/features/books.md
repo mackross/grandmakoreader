@@ -12,7 +12,7 @@ The Books screen lists supported titles from one folder. Returning from the read
 ## How to get to it (user POV)
 
 - Start KOReader. Tap **An Evening Walk**.
-- Swipe inward from an edge while reading, choose **Put back on shelf**, then reopen the same title.
+- Swipe inward from an edge while reading, choose **Open another book**, then reopen the same title.
 
 ## Driving it with SDL
 
@@ -20,9 +20,9 @@ Preconditions: the doctor check passes and the review can seed the two fixture b
 
 - Run `tools/review-koreader "$evidence"`. In each orientation, `01-books.png` should show the two titles and `02-reading.png` should show the opening of **An Evening Walk**.
 - The run changes the disposable folder and sends the unplug event, then checks the shelf count. It also rotates the open shelf and checks its new dimensions.
-- The run turns to a later page, taps **Put back on shelf**, reopens the book from Books, and checks the saved reading position after reopening.
+- The run turns to a later page, taps **Open another book**, reopens the book from Books, and checks the saved reading position after reopening.
 
 ## Gotchas
 
 - On Kindle, copy books to the top-level `books` folder. The simulator creates its own temporary library.
-- The normal reading menu and the end-of-book dialog both say **Put back on shelf**. The [end-of-book action](end-of-book.md) has a different saved effect.
+- The reading menu says **Open another book**, while the end-of-book dialog says **Put back on shelf**. The [end-of-book action](end-of-book.md) marks the book read instead of keeping the place.

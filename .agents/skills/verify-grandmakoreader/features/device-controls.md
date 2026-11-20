@@ -11,14 +11,14 @@ The reading menu toggles the frontlight and lets the reader put the Kindle to sl
 ## How to get to it (user POV)
 
 - From a book, swipe inward. Tap **Turn on light**, make any adjustment, and tap **Done**. Reopen the menu to use **Turn off light**.
-- Swipe inward and select **Put book down**. Use the power button to wake a Kindle, or F2 in the desktop preview.
+- Swipe inward and select **Stop for now**. Use the power button to wake a Kindle, or F2 in the desktop preview.
 
 ## Driving it with SDL
 
 Preconditions: the doctor passes. The simulator starts with the frontlight off.
 
 - Run `tools/review-koreader "$evidence"`. Inspect `05-light-controls.png` for **Darker**, **Brighter**, and **Done**. The test sets the simulated hardware one step from each limit, then taps the relevant control to reach the limit and verifies a second tap in that position leaves brightness and the panel unchanged.
-- Inspect `07-put-book-down.png` for the desktop sleep message. The run checks that the screensaver becomes active and that the reader resumes.
+- Inspect `07-stop-for-now.png` for the desktop sleep message. The run checks that the screensaver becomes active and that the reader resumes.
 
 ## Gotchas
 

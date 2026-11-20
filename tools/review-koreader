@@ -35,6 +35,7 @@ for orientation in portrait landscape; do
     mkdir -p "$KO_HOME/patches" "$XDG_DOCUMENTS_DIR" "$KO_REVIEW_SCREENSHOTS"
     log="$KO_REVIEW_SCREENSHOTS/run.log"
     for patch in "$root"/patches/*.lua; do ln -s "$patch" "$KO_HOME/patches/"; done
+    ln -s "$root/patches/icons" "$KO_HOME/patches/icons"
     ln -s "$root/tools/reader-review.lua" "$KO_HOME/patches/2-review-reader.lua"
     cp "$root/fixtures/An Evening Walk.html" "$root/fixtures/Oasis Sample.html" "$XDG_DOCUMENTS_DIR/"
     cat > "$KO_HOME/settings.reader.lua" <<'LUA'
