@@ -32,7 +32,7 @@ The updater borrows the radio from `patches/2-wifi.lua` with the `auto-update` n
 
 ## Make the home screen a Book Shelf with a Book Shop and Settings beside it
 
-Three places sit along the bottom: Book Shop, Book Shelf in the centre and raised over the bar, and Settings. Book Shop and Settings each show “Coming soon” until they have content. The shop and shelf icons were drawn for this project and live with the others in `patches/icons/`.
+Three places sit along the bottom: Book Shop, Book Shelf in the centre and raised over the bar, and Settings. Book Shop shows “Coming soon” until it has content. Settings holds Advanced; see below. The shop and shelf icons were drawn for this project and live with the others in `patches/icons/`.
 
 ## File the shelf in library order and name shelves by letter
 
@@ -45,3 +45,7 @@ Find a book sits at the bottom right and appears only with more than one shelf. 
 ## Read authors through KOReader’s cover browser plugin
 
 `patches/authors.lua` borrows the cover browser’s background reader and database for each book’s author, so the plugin has to stay installed on the Kindle. A typed author matches a book once it has been read in the background. The speed of that on the Oasis is unmeasured.
+
+## Put Exit to Kindle behind Settings, Advanced, and a confirmation
+
+Andrew asked for Advanced (Exit to Kindle) in Settings. Settings shows one row, Advanced, and Advanced shows one row, Exit to Kindle. A tap on it asks “Leave the books and go to the Kindle’s own home screen?” with Cancel and Exit to Kindle. Leaving takes three deliberate taps in three places, so a stray tap or swipe while reading cannot strand the reader on the Kindle’s home screen, which she may not know how to leave. The word Advanced tells her the row is not for her, and Settings stays free for everyday choices later. A row straight in Settings would cost one fewer tap but sit beside those everyday choices. A password or long press was left out: the confirmation is enough for an accident, and nothing here needs to be kept from her. Advanced is a side room of Settings, like Find on the shelf: no place is filled in, and the Settings button goes back. Exit to Kindle ends KOReader with code 0, as KOReader’s own Exit does, and the Kindle’s launcher returns to its home screen. The simulator checks the quit; the return to the Kindle home screen and how to reopen KOReader from there need a check on the Oasis.

@@ -1,5 +1,6 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
+local ButtonDialog = require("ui/widget/buttondialog")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local DataStorage = require("datastorage")
 local Device = require("device")
@@ -542,9 +543,40 @@ local function shelfItems(books, view, focused_file)
     return items
 end
 
+-- Leaving KOReader hands the Kindle back to its own home screen, so a tap on the row only asks first.
+local function confirmExit()
+    local dialog
+    local function choice(text, callback)
+        return { text = text, font_size = 30, callback = callback }
+    end
+    dialog = ButtonDialog:new{
+        modal = true,
+        title = "Leave the books and go to the Kindle’s own home screen?",
+        title_align = "center",
+        title_face = Font:getFace("infofont", 26),
+        buttons = { {
+            choice("Cancel", function() UIManager:close(dialog) end),
+            choice("Exit to Kindle", function()
+                UIManager:close(dialog)
+                -- Like KOReader's own Exit: reader.lua saves settings, and the Kindle's launcher takes over.
+                UIManager:quit(0)
+            end),
+        } },
+    }
+    UIManager:show(dialog)
+end
+
+-- The rows of Settings, or of Advanced within it.
+local function settingsItems(view)
+    if view then
+        return { { text = "Exit to Kindle", callback = confirmExit } }
+    end
+    return { { text = "Advanced", callback = function() showHome("settings", nil, { kind = "advanced" }) end } }
+end
+
 -- Shows a place. On the shelf, view is nil for every book, or { kind = "find" } for the Find screen,
 -- { kind = "recent" } for Read lately, or { kind = "search", text = ... } for books with that name
--- or author.
+-- or author. In Settings, { kind = "advanced" } is the Advanced screen.
 function showHome(place_id, focused_file, view)
     if home then
         UIManager:close(home)
@@ -557,7 +589,7 @@ function showHome(place_id, focused_file, view)
     local finding = view and view.kind == "find"
     if view then
         title = finding and "Find a book" or view.kind == "recent" and "Read lately"
-            or "Books with “" .. view.text .. "”"
+            or view.kind == "advanced" and "Advanced" or "Books with “" .. view.text .. "”"
     end
     local books = place_id == "shelf" and allBooks() or nil
     if books then
@@ -579,8 +611,9 @@ function showHome(place_id, focused_file, view)
             with_bottom_line = true,
         },
         books = books,
-        -- The shop and the settings are placeholders until their contents are decided.
-        item_table = not books and { { text = "Coming soon", select_enabled = false } }
+        -- The shop is a placeholder until its contents are decided.
+        item_table = place_id == "settings" and settingsItems(view)
+            or not books and { { text = "Coming soon", select_enabled = false } }
             or finding and {} or shelfItems(books, view, focused_file),
     }
     UIManager:show(home, "full")

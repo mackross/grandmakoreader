@@ -190,6 +190,14 @@ local function check()
     wait(0.25)
     assert(top().dimen.w == width and #top().item_table == 2, "the shelf returns to its original size")
 
+    local function button(text, widget)
+        widget = widget or top()
+        if widget.text == text and widget.label_widget then return widget end
+        for _, child in ipairs(widget) do
+            local found = type(child) == "table" and button(text, child)
+            if found then return found end
+        end
+    end
     local function place(index)
         tap(width * (index - 0.5) / 3, height - 40)
         return top()
@@ -198,6 +206,27 @@ local function check()
     screenshot("01-book-shop")
     assert(place(3).place == "settings" and top().title == "Settings", "the right button opens Settings")
     screenshot("01-settings")
+    local function row(text)
+        local first = top().layout[1][1]
+        assert(#top().item_table == 1 and first.text == text, "the screen offers only " .. text)
+        return first[1]
+    end
+    local function advanced()
+        tapBounds(row("Advanced").dimen)
+        assert(top().place == "settings" and top().view.kind == "advanced" and top().title == "Advanced",
+            "Advanced opens from Settings")
+    end
+    local function askToExit()
+        tapBounds(row("Exit to Kindle").dimen)
+        assert(button("Cancel") and button("Exit to Kindle"), "Exit to Kindle asks before leaving")
+    end
+    advanced()
+    screenshot("01-advanced")
+    askToExit()
+    screenshot("01-exit-to-kindle")
+    tapBounds(button("Cancel").dimen)
+    assert(top().title == "Advanced" and not button("Cancel"), "Cancel stays in Advanced")
+    assert(place(3).place == "settings" and not top().view, "the Settings button returns from Advanced")
     UIManager:broadcastEvent(Event:new("NotCharging"))
     wait(0.15)
     assert(top().place == "settings", "a refresh stays on the open place")
@@ -238,14 +267,6 @@ local function check()
     local shelved = {}
     for index, item in ipairs(top().item_table) do shelved[index] = item.text end
     assert(table.concat(shelved, "|") == table.concat(library_order, "|"), "the books stand in library order")
-    local function button(text, widget)
-        widget = widget or top()
-        if widget.text == text and widget.label_widget then return widget end
-        for _, child in ipairs(widget) do
-            local found = type(child) == "table" and button(text, child)
-            if found then return found end
-        end
-    end
     local shelf_size = #top().page_items[1]
     local function letters(first, last)
         first, last = filed_under:sub(first, first), filed_under:sub(last, last)
@@ -610,8 +631,13 @@ local function check()
         "confirmation removes the book and refreshes the shelf")
     print("PASS end of book: same-size replacement, cancel restores menu, last page, restart, shelve with zero progress, confirmed removal")
 
+    -- The run ends the way the reader leaves for the Kindle: Exit to Kindle, then its confirmation.
+    place(3)
+    advanced()
+    askToExit()
     print(string.format("Reader review passed at %d × %d", width, height))
-    UIManager:quit(0)
+    tapBounds(button("Exit to Kindle").dimen)
+    error("Exit to Kindle left KOReader running")
 end
 
 UIManager:scheduleIn(0.25, resume, coroutine.create(check))
