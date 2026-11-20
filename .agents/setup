@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+
+if [ "$(uname -s)" = Linux ] && {
+    ! command -v curl >/dev/null || ! command -v perl >/dev/null || [ ! -s /etc/ssl/certs/ca-certificates.crt ]
+}; then
+    if [ "$(id -u)" -eq 0 ]; then set -- apt-get; else set -- sudo -n apt-get; fi
+    "$@" update
+    "$@" install -y --no-install-recommends ca-certificates curl perl
+fi
+
+"$root/tools/setup-koreader"
+"$root/tools/setup-koreader" --doctor

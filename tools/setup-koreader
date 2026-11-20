@@ -1,0 +1,120 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+state="$root/.koreader"
+platform=$(uname -s)
+architecture=$(uname -m)
+
+case "$platform/$architecture" in
+    Darwin/arm64)
+        revision=v2026.07.2-339-g21cc368
+        app="$state/runtime/KOReader.app"
+        runtime="$app/Contents/koreader"
+        ;;
+    Linux/x86_64|Linux/aarch64)
+        revision=v2026.07.1
+        app="$state/runtime/koreader-$revision-$architecture"
+        runtime="$app/usr/lib/koreader"
+        ;;
+    *)
+        printf 'Unsupported KOReader host: %s/%s. Use Apple Silicon macOS or Linux x86_64/aarch64.\n' \
+            "$platform" "$architecture" >&2
+        exit 1
+        ;;
+esac
+
+runtime_ready() {
+    [ -x "$runtime/luajit" ] && [ -f "$runtime/reader.lua" ] && [ -f "$runtime/git-rev" ]
+}
+
+require_runtime() {
+    if ! runtime_ready; then
+        echo 'Run tools/setup-koreader first.' >&2
+        exit 1
+    fi
+}
+
+case "${1:-}" in
+    --runtime)
+        require_runtime
+        printf '%s\n' "$runtime"
+        exit
+        ;;
+    --doctor)
+        require_runtime
+        installed=$(cat "$runtime/git-rev")
+        case "$installed" in
+            "$revision"|"${revision}_"*) ;;
+            *) printf 'Expected KOReader %s, found %s at %s\n' "$revision" "$installed" "$runtime" >&2; exit 1 ;;
+        esac
+        cd "$runtime"
+        unset SDL_FULLSCREEN
+        SDL_VIDEO_DRIVER=dummy SDL_RENDER_DRIVER=software EMULATE_READER_W=200 EMULATE_READER_H=300 \
+            ./luajit -e 'require("setupkoenv"); local sdl = require("ffi/SDL3"); sdl.open(200, 300); assert(sdl.w == 200 and sdl.h == 300); sdl.SDL.SDL_Quit()'
+        printf 'KOReader ready: %s on %s/%s\nRuntime: %s\n' "$installed" "$platform" "$architecture" "$runtime"
+        exit
+        ;;
+    '') ;;
+    *) echo 'Usage: tools/setup-koreader [--runtime|--doctor]' >&2; exit 2 ;;
+esac
+
+if runtime_ready; then
+    printf '%s\n' "$app"
+    exit
+fi
+if [ -e "$app" ]; then
+    printf 'Incomplete KOReader runtime at %s. Move it aside and run setup again.\n' "$app" >&2
+    exit 1
+fi
+
+mkdir -p "$state/download" "$state/runtime"
+staging=$(mktemp -d "$state/download/unpack.XXXXXX")
+trap 'rm -rf "$staging"' EXIT
+
+download_macos() {
+    artifact=14493861632
+    checksum=d47f50b664875bf5081c21dcf028c7d6211e5e4c9a7fcc9777a1fcfa2e70722c
+    archive="$state/download/koreader-macos.7z"
+    command -v 7zz >/dev/null || { echo 'Install 7-Zip with brew install sevenzip.' >&2; exit 1; }
+    if [ ! -f "$archive" ]; then
+        command -v gh >/dev/null || { echo 'Install and sign in to the GitHub CLI to download KOReader.' >&2; exit 1; }
+        gh api "repos/koreader/koreader/actions/artifacts/$artifact/zip" > "$staging/download"
+        printf '%s  %s\n' "$checksum" "$staging/download" | shasum -a 256 -c -
+        mv "$staging/download" "$archive"
+    fi
+    printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+    7zz x "$archive" "-o$staging" >/dev/null
+    test -x "$staging/KOReader.app/Contents/MacOS/koreader"
+    mv "$staging/KOReader.app" "$app"
+}
+
+download_linux() {
+    case "$architecture" in
+        x86_64) checksum=e60ed106cf4e824d50394a259b3aa6c46fb1daee189df73a1734e5732b5dc245 ;;
+        aarch64) checksum=fff2394e2d896f4df61501d89c1ae7f53903c34433b5e587551ed2279f90ab10 ;;
+    esac
+    filename="koreader-$revision-$architecture.AppImage"
+    archive="$state/download/$filename"
+    if [ ! -f "$archive" ]; then
+        curl -fLsS --retry 3 --connect-timeout 15 --max-time 180 \
+            "https://github.com/koreader/koreader/releases/download/$revision/$filename" -o "$staging/download"
+        printf '%s  %s\n' "$checksum" "$staging/download" | sha256sum -c -
+        chmod +x "$staging/download"
+        mv "$staging/download" "$archive"
+    fi
+    printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c -
+    chmod +x "$archive"
+    (cd "$staging" && "$archive" --appimage-extract) >/dev/null
+    test -x "$staging/squashfs-root/usr/lib/koreader/luajit"
+    if ! mv -T "$staging/squashfs-root" "$app"; then
+        runtime_ready || exit 1
+    fi
+}
+
+case "$platform" in
+    Darwin) download_macos ;;
+    Linux) download_linux ;;
+esac
+require_runtime
+printf '%s\n' "$app"

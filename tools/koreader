@@ -1,0 +1,97 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    echo 'Usage: tools/koreader {run|smoke} [oasis1|oasis2|oasis3] [portrait|landscape]'
+}
+
+mode=${1:-run}
+profile=${2:-oasis3}
+orientation=${3:-portrait}
+case "$mode" in
+    -h|--help) usage; exit ;;
+    run|smoke) ;;
+    *) usage >&2; exit 2 ;;
+esac
+case "$profile" in
+    oasis1) width=1072; height=1448 ;;
+    oasis2|oasis3) width=1264; height=1680 ;;
+    *) usage >&2; exit 2 ;;
+esac
+case "$orientation" in
+    portrait) ;;
+    landscape) portrait_width=$width; width=$height; height=$portrait_width ;;
+    *) usage >&2; exit 2 ;;
+esac
+if [ "$#" -gt 3 ]; then usage >&2; exit 2; fi
+
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+state="$root/.koreader"
+runtime=$("$root/tools/setup-koreader" --runtime)
+
+profile_dir="$state/$mode/$profile"
+mkdir -p "$profile_dir"
+KO_HOME="$profile_dir"
+if [ "$mode" = smoke ]; then
+    KO_HOME=$(mktemp -d "$profile_dir/check.XXXXXX")
+fi
+export KO_HOME
+export XDG_DOCUMENTS_DIR="$KO_HOME/books"
+export EMULATE_READER_DPI=300
+export KO_DEV_DEVICE_NAME=Kindle
+export KO_DEV_CAPTURE="$KO_HOME/screenshots/plugin-check.png"
+unset SDL_FULLSCREEN KO_DEV_SMOKE
+mkdir -p "$KO_HOME/patches" "$KO_HOME/screenshots" "$XDG_DOCUMENTS_DIR"
+for patch in "$root"/patches/*.lua; do
+    [ -f "$patch" ] || continue
+    target="$KO_HOME/patches/${patch##*/}"
+    if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+        ln -s "$patch" "$target"
+    fi
+done
+if [ ! -e "$KO_HOME/plugins" ]; then
+    ln -s "$root/plugins" "$KO_HOME/plugins"
+fi
+book="$XDG_DOCUMENTS_DIR/Oasis Sample.html"
+if [ ! -e "$book" ]; then
+    cp "$root/fixtures/Oasis Sample.html" "$book"
+fi
+if [ ! -e "$KO_HOME/settings.reader.lua" ]; then
+    printf 'return { color_rendering = false }\n' > "$KO_HOME/settings.reader.lua"
+fi
+
+if [ "$mode" = run ]; then
+    platform=$(uname -s)
+    default_scale=1
+    if [ "$platform" = Darwin ]; then default_scale=2; fi
+    scale=${KO_WINDOW_SCALE:-$default_scale}
+    case "$scale" in
+        1|2) ;;
+        *) echo 'KO_WINDOW_SCALE must be 1 or 2.' >&2; exit 2 ;;
+    esac
+    export EMULATE_READER_W=$((width / scale))
+    export EMULATE_READER_H=$((height / scale))
+    if [ "$platform" = Darwin ]; then
+        exec "$runtime/../MacOS/koreader" -d "$XDG_DOCUMENTS_DIR"
+    fi
+    cd "$runtime"
+    exec ./luajit reader.lua -d "$XDG_DOCUMENTS_DIR"
+fi
+
+export SDL_VIDEO_DRIVER=dummy
+export SDL_RENDER_DRIVER=software
+export EMULATE_READER_W=$width
+export EMULATE_READER_H=$height
+export KO_DEV_SMOKE=1
+cd "$runtime"
+/usr/bin/perl -e 'alarm shift; exec @ARGV or die "Cannot start KOReader: $!\n";' \
+    30 ./luajit reader.lua "$book" > "$KO_HOME/run.log" 2>&1 || {
+    tail -n 60 "$KO_HOME/run.log" >&2
+    printf 'KOReader did not complete the plugin check. Log at %s\n' "$KO_HOME/run.log" >&2
+    exit 1
+}
+if ! test -s "$KO_DEV_CAPTURE" || ! grep -Fq 'Plugin check passed' "$KO_HOME/run.log"; then
+    tail -n 60 "$KO_HOME/run.log" >&2
+    exit 1
+fi
+printf 'Plugin check passed (%s × %s at 300 DPI)\n%s\n' "$width" "$height" "$KO_DEV_CAPTURE"

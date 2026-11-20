@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    echo 'Usage: tools/review-koreader <screenshot directory>' >&2
+    exit 2
+fi
+
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+state="$root/.koreader"
+runtime=$("$root/tools/setup-koreader" --runtime)
+
+mkdir -p "$1" "$state/review-runs"
+output=$(CDPATH='' cd "$1" && pwd)
+scratch=$(mktemp -d "$state/review-runs/check.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+export SDL_VIDEO_DRIVER=dummy
+export SDL_RENDER_DRIVER=software
+export EMULATE_READER_DPI=300
+export KO_DEV_DEVICE_NAME=Kindle
+unset KO_DEV_BATTERY_PERCENT KO_DEV_SMOKE SDL_FULLSCREEN EMULATE_READER_FORCE_PORTRAIT EMULATE_READER_VIEWPORT
+
+set --
+if [ "${KO_REVIEW_DEBUG:-0}" = 1 ]; then set -- -d; fi
+
+printf 'Evidence: %s\n' "$output"
+
+for orientation in portrait landscape; do
+    export KO_HOME="$scratch/$orientation"
+    export XDG_DOCUMENTS_DIR="$KO_HOME/books"
+    export KO_REVIEW_SCREENSHOTS="$output/$orientation"
+    mkdir -p "$KO_HOME/patches" "$XDG_DOCUMENTS_DIR" "$KO_REVIEW_SCREENSHOTS"
+    log="$KO_REVIEW_SCREENSHOTS/run.log"
+    for patch in "$root"/patches/*.lua; do ln -s "$patch" "$KO_HOME/patches/"; done
+    ln -s "$root/tools/reader-review.lua" "$KO_HOME/patches/2-review-reader.lua"
+    cp "$root/fixtures/An Evening Walk.html" "$root/fixtures/Oasis Sample.html" "$XDG_DOCUMENTS_DIR/"
+    cat > "$KO_HOME/settings.reader.lua" <<'LUA'
+return {
+    color_rendering = false,
+    start_with = "last",
+    end_document_action = "nothing",
+    end_document_auto_mark = true,
+}
+LUA
+
+    if [ "$orientation" = portrait ]; then
+        export EMULATE_READER_W=1264 EMULATE_READER_H=1680
+    else
+        export EMULATE_READER_W=1680 EMULATE_READER_H=1264
+    fi
+    (
+        cd "$runtime"
+        perl -e 'alarm shift; exec @ARGV or die "Cannot start KOReader: $!\n";' 45 ./luajit reader.lua "$@"
+    ) > "$log" 2>&1 || {
+        tail -n 60 "$log" >&2
+        exit 1
+    }
+    grep '^Reader review passed' "$log"
+done
+
+printf 'Screenshots and logs: %s\n' "$output"
