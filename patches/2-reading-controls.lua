@@ -101,6 +101,9 @@ function Controls:onClose()
         reader:saveSettings()
     elseif self.panel == "find" then
         reader.find_place = nil
+        if reader.rolling then
+            reader:handleEvent(Event:new("SetPageMargins", reader.typeset.unscaled_margins))
+        end
     end
     return true
 end
@@ -159,10 +162,23 @@ end
 
 function Controls:startFindPlace()
     local reader = self.reader
+    reader.find_place = {}
+    -- The bar's margin renumbers the pages, so count them once it is up.
+    reader:showReadingControls("find")
     local count = reader.document:getPageCount()
     reader.find_place = { low = 1, high = count, count = count }
     reader:handleEvent(Event:new("GotoPage", math.floor((1 + count) / 2)))
-    reader:showReadingControls("find")
+end
+
+-- While the search is up, the page ends above the bar, as it does above the battery warning.
+function Controls:fitPageAboveBar()
+    local reader = self.reader
+    if not reader.rolling then return end
+    local margins, footer = reader.typeset.unscaled_margins, reader.view.footer
+    reader.document:setPageMargins(Screen:scaleBySize(margins[1]), Screen:scaleBySize(margins[2]),
+        Screen:scaleBySize(margins[3]),
+        Screen:scaleBySize(margins[4]) + (footer.reclaim_height and 0 or footer:getHeight()) + self.bounds.h)
+    reader:handleEvent(Event:new("UpdatePos"))
 end
 
 function Controls:answerFindPlace(after)
@@ -186,8 +202,9 @@ function Controls:answerFindPlace(after)
         if find.low > find.high then find.low = 1 end
     end
     if find.low == find.high then
-        self:onClose()
+        -- Closing restores the margin and renumbers the pages, so turn to the page first.
         reader:handleEvent(Event:new("GotoPage", find.low))
+        self:onClose()
     else
         reader:handleEvent(Event:new("GotoPage", math.floor((find.low + find.high) / 2)))
     end
@@ -412,6 +429,7 @@ function Controls:init()
         self[1] = self:buildFindChoice(width, height)
     else
         self[1] = self:buildBar(width, height)
+        if self.panel == "find" then self:fitPageAboveBar() end
     end
 end
 

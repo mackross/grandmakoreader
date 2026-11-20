@@ -792,7 +792,11 @@ local function check()
         assert(reader.reading_controls.panel == "find-choice", "Find a place first offers its choices")
         tapBounds(findButton("Find a page").dimen)
         assert(reader.reading_controls.panel == "find-help", "Find a page explains the search first")
+        local reading_count = reader.document:getPageCount()
         tapBounds(findButton("Start").dimen)
+        -- The page ends above the bar while searching, which takes more pages.
+        count = reader.document:getPageCount()
+        assert(count > reading_count, "the page makes room for the find bar")
         assert(reader.reading_controls.panel == "find" and reader:getCurrentPage() == math.floor((1 + count) / 2),
             "Find a place opens halfway through the book")
     end
@@ -830,12 +834,15 @@ local function check()
     assert(reader.reading_controls.panel == "find" and reader:getCurrentPage() == middle + 2,
         "side swipes turn pages while the question stays up")
     turnPage(false)
+    local shown = reader.rolling:getBookLocation()
     tapBounds(findButton("Done").dimen)
-    assert(not reader.reading_controls and not reader.find_place and reader:getCurrentPage() == middle + 1,
+    assert(not reader.reading_controls and not reader.find_place and reader.rolling:getBookLocation() == shown,
         "Done clears the search and leaves the page open")
+    assert(reader.document:getPageCount() < count, "Done gives the page its full height back")
 
     for _, target in ipairs{ 1, math.floor(count * 0.3), count - 1, count } do
         startFind()
+        local target_place = reader.document:getPageXPointer(target)
         local questions = 0
         while reader.reading_controls do
             local page = reader:getCurrentPage()
@@ -847,7 +854,7 @@ local function check()
             end
             assert(questions <= math.ceil(math.log(count) / math.log(2)) + 1, "each answer halves the pages left")
         end
-        assert(reader:getCurrentPage() == target, "Before and After lead to the page")
+        assert(reader.rolling:getBookLocation() == target_place, "Before and After lead to the page")
     end
 
     -- An answer that agrees with an earlier one keeps its range; one that contradicts it reopens that side.
