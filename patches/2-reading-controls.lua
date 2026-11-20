@@ -22,6 +22,10 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local Screen = Device.screen
 local power = Device:getPowerDevice()
 local page_keys = { LPgFwd = true, LPgBack = true, RPgFwd = true, RPgBack = true }
+-- Books open in large print until a size is chosen with Change Font.
+if G_reader_settings:hasNot("copt_font_size") then
+    G_reader_settings:saveSetting("copt_font_size", 36)
+end
 -- Menu icons ship in the icons folder next to this patch.
 local icons_dir = debug.getinfo(1, "S").source:match("^@(.*/)") .. "icons/"
 

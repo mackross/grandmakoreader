@@ -166,6 +166,7 @@ local function check()
     menuAction(1)
     assert(reader.reading_controls.panel == "font")
     local old_size = reader.document.configurable.font_size
+    assert(old_size == 36, "a new book opens in large print")
     local original_location = reader.rolling:getBookLocation()
     barAction(2)
     local new_size = reader.document.configurable.font_size
