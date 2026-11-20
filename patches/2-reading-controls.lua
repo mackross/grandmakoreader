@@ -98,6 +98,8 @@ function Controls:onClose()
     reader.reading_controls = nil
     if self.panel == "font" then
         reader:saveSettings()
+    elseif self.panel == "find" then
+        reader.find_place = nil
     end
     return true
 end
@@ -109,15 +111,19 @@ function Controls:handleEvent(event)
     elseif event.handler == "onKeyPress" then
         local key = event.args[1].key
         if page_keys[key] then
-            self:onClose()
+            -- Finding a place keeps its question up while the pages turn.
+            if self.panel ~= "find" then self:onClose() end
             return self.reader:handleEvent(event)
         elseif key == "Back" then
             return self:onClose()
         end
     elseif event.handler == "onGesture" then
+        if self.panel == "find" and event.args[1].ges == "swipe" then
+            return self.reader:handleEvent(event)
+        end
         if not InputContainer.handleEvent(self, event) then
             local gesture = event.args[1]
-            if gesture.ges == "tap" and not self.bounds:contains(gesture.pos) then
+            if gesture.ges == "tap" and self.panel ~= "find" and not self.bounds:contains(gesture.pos) then
                 self:onClose()
             end
         end
@@ -142,6 +148,43 @@ function Controls:adjustLight()
         power:setIntensity(power.fl_min + 1)
     end
     self.reader:showReadingControls("light")
+end
+
+-- Find a place halves the pages it could be on with each answer, starting halfway through the book.
+function Controls:startFindPlace()
+    local reader = self.reader
+    local count = reader.document:getPageCount()
+    reader.find_place = { low = 1, high = count, count = count }
+    reader:handleEvent(Event:new("GotoPage", math.floor((1 + count) / 2)))
+    reader:showReadingControls("find")
+end
+
+function Controls:answerFindPlace(after)
+    local reader = self.reader
+    local find = reader.find_place
+    local count = reader.document:getPageCount()
+    if count ~= find.count then
+        -- Turning the Kindle renumbers the pages, so keep the same share of the book.
+        find.low = math.max(1, math.floor((find.low - 1) * count / find.count) + 1)
+        find.high = math.min(count, math.ceil(find.high * count / find.count))
+        find.count = count
+    end
+    -- The page on screen may be one turned to with the page buttons. An answer that agrees with the
+    -- earlier ones keeps their narrower range; one that contradicts them wins and reopens that side.
+    local page = reader:getCurrentPage()
+    if after then
+        find.low = math.max(find.low, math.min(page + 1, count))
+        if find.high < find.low then find.high = count end
+    else
+        find.high = math.min(find.high, math.max(page - 1, 1))
+        if find.low > find.high then find.low = 1 end
+    end
+    if find.low == find.high then
+        self:onClose()
+        reader:handleEvent(Event:new("GotoPage", find.low))
+    else
+        reader:handleEvent(Event:new("GotoPage", math.floor((find.low + find.high) / 2)))
+    end
 end
 
 function Controls:putBookDown()
@@ -176,6 +219,11 @@ function Controls:buildSidebar(width, height)
             callback = function() self:adjustLight() end,
         }
     end
+    actions[#actions + 1] = {
+        text = "Find a place",
+        icon = "find-a-place",
+        callback = function() self:startFindPlace() end,
+    }
     actions[#actions + 1] = {
         text = "Stop for now",
         icon = "stop-for-now",
@@ -236,6 +284,11 @@ function Controls:buildBar(width, height)
         addButton("Smaller", function() self:changeFontSize(-2) end)
         addButton("Bigger", function() self:changeFontSize(2) end)
         rows[2] = {}
+    elseif self.panel == "find" then
+        -- One row of buttons leaves more of the page to recognise, which matters in landscape.
+        addButton("Before", function() self:answerFindPlace(false) end)
+        addButton("Done", function() self:onClose() end)
+        addButton("After", function() self:answerFindPlace(true) end)
     else
         local level = power:frontlightIntensity()
         local function addBrightnessButton(text, target)
@@ -256,17 +309,37 @@ function Controls:buildBar(width, height)
             self:onClose()
         end)
     end
-    addButton("Done", function() self:onClose() end)
+    if self.panel ~= "find" then
+        addButton("Done", function() self:onClose() end)
+    end
 
+    local inner_width = width - 2 * Size.border.window
+    local content = ButtonTable:new{
+        buttons = rows,
+        width = inner_width,
+        show_parent = self,
+    }
+    if self.panel == "find" then
+        local padding = Size.padding.large
+        content = VerticalGroup:new{
+            FrameContainer:new{
+                bordersize = 0,
+                padding = padding,
+                TextBoxWidget:new{
+                    text = "Find a place: is it before or after this page?",
+                    width = inner_width - 2 * padding,
+                    alignment = "center",
+                    face = Font:getFace("smalltfont", 40),
+                },
+            },
+            content,
+        }
+    end
     local frame = FrameContainer:new{
         background = Blitbuffer.COLOR_WHITE,
         bordersize = Size.border.window,
         padding = 0,
-        ButtonTable:new{
-            buttons = rows,
-            width = width - 2 * Size.border.window,
-            show_parent = self,
-        },
+        content,
     }
     local bar_height = frame:getSize().h
     self.bounds = Geom:new{ x = 0, y = height - bar_height, w = width, h = bar_height }

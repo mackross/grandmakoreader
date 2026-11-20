@@ -445,7 +445,7 @@ local function check()
 
     local function menuAction(index)
         local bounds = assert(reader.reading_controls).bounds
-        tap(bounds.x + bounds.w / 2, bounds.h * (index - 0.5) / 4)
+        tap(bounds.x + bounds.w / 2, bounds.h * (index - 0.5) / 5)
     end
     local function gridAction(row, column)
         local bounds = assert(reader.reading_controls).bounds
@@ -567,7 +567,7 @@ local function check()
     local slept_answer
     Wifi:need("sleep", 60, function(ok, reason) slept_answer = reason or ok end)
     sidebar()
-    menuAction(3)
+    menuAction(4)
     assert(Device.screen_saver_mode and not reader.reading_controls, "Stop for now activates the simulator screensaver")
     assert((slept_answer == true or slept_answer == "asleep") and not next(Wifi.needs) and not NetworkMgr:isWifiOn(),
         "sleep ends every Wi-Fi need and turns the radio off")
@@ -583,7 +583,7 @@ local function check()
 
     local saved_location = reader.rolling:getBookLocation()
     sidebar()
-    menuAction(4)
+    menuAction(5)
     assert(top().name == "books_home" and not ReaderUI.instance)
     tapBounds(top().layout[1][1][1].dimen)
     wait(0.4)
@@ -640,6 +640,105 @@ local function check()
     assert(top().name == "books_home" and #top().item_table == 1 and not lfs.attributes(book),
         "confirmation removes the book and refreshes the shelf")
     print("PASS end of book: same-size replacement, cancel restores menu, last page, restart, shelve with zero progress, confirmed removal")
+
+    -- Find a place needs a book of many pages. This one is temporary and filed after the fixture.
+    local long_book = os.getenv("XDG_DOCUMENTS_DIR") .. "/Zebra Pages.html"
+    file = assert(io.open(long_book, "w"))
+    file:write("<html><body>")
+    for line = 1, 600 do
+        file:write(string.format("<p>Line %d of a long temporary book used to find a place.</p>", line))
+    end
+    file:write("</body></html>")
+    file:close()
+    UIManager:broadcastEvent(Event:new("NotCharging"))
+    wait(0.15)
+    assert(top().item_table[2].text == "Zebra Pages", "the long book is on the shelf")
+    tapBounds(top().layout[2][1][1].dimen)
+    wait(0.4)
+    reader = assert(ReaderUI.instance)
+    local count = reader.document:getPageCount()
+    assert(count > 30, "the long book has many pages")
+    local function findButton(text)
+        return assert(button(text, reader.reading_controls), text .. " is on the find bar")
+    end
+    local function startFind()
+        sidebar()
+        menuAction(3)
+        assert(reader.reading_controls.panel == "find" and reader:getCurrentPage() == math.floor((1 + count) / 2),
+            "Find a place opens halfway through the book")
+    end
+    startFind()
+    screenshot("10-find-a-place")
+    local middle = reader:getCurrentPage()
+    tap(width / 2, height / 4)
+    assert(reader.reading_controls and reader.reading_controls.panel == "find", "a tap on the page keeps the question up")
+    turnPage(true)
+    assert(reader.reading_controls.panel == "find" and reader:getCurrentPage() == middle + 1,
+        "the page buttons turn pages while the question stays up")
+    swipe(width * 0.7, height / 4, -300, 0)
+    swipe(width * 0.7, height / 4, -300, 0)
+    swipe(width * 0.3, height / 4, 300, 0)
+    assert(reader.reading_controls.panel == "find" and reader:getCurrentPage() == middle + 2,
+        "side swipes turn pages while the question stays up")
+    turnPage(false)
+    tapBounds(findButton("Done").dimen)
+    assert(not reader.reading_controls and not reader.find_place and reader:getCurrentPage() == middle + 1,
+        "Done clears the search and leaves the page open")
+
+    for _, target in ipairs{ 1, math.floor(count * 0.3), count - 1, count } do
+        startFind()
+        local questions = 0
+        while reader.reading_controls do
+            local page = reader:getCurrentPage()
+            if page == target then
+                tapBounds(findButton("Done").dimen)
+            else
+                tapBounds(findButton(page < target and "After" or "Before").dimen)
+                questions = questions + 1
+            end
+            assert(questions <= math.ceil(math.log(count) / math.log(2)) + 1, "each answer halves the pages left")
+        end
+        assert(reader:getCurrentPage() == target, "Before and After lead to the page")
+    end
+
+    -- An answer that agrees with an earlier one keeps its range; one that contradicts it reopens that side.
+    startFind()
+    tapBounds(findButton("Before").dimen)
+    local narrowed = reader.find_place.high
+    assert(reader.find_place.low == 1 and narrowed == middle - 1, "Before narrows to the earlier half")
+    reader:handleEvent(Event:new("GotoPage", middle + 3))
+    tapBounds(findButton("Before").dimen)
+    assert(reader.find_place.high == narrowed, "a later Before past the range keeps the earlier answer")
+    reader:handleEvent(Event:new("GotoPage", middle + 10))
+    tapBounds(findButton("After").dimen)
+    assert(reader.find_place.low == middle + 11 and reader.find_place.high == count,
+        "After a page ruled out reopens the later pages")
+    tapBounds(findButton("Done").dimen)
+
+    -- An answer after turning pages counts from the page on screen, and rotation keeps the same share of the book.
+    startFind()
+    for _ = 1, 3 do turnPage(true) end
+    tapBounds(findButton("After").dimen)
+    assert(reader.find_place.low == middle + 4, "the answer counts from the page turned to")
+    UIManager:sendEvent(Event:new("SetRotationMode", 1))
+    wait(0.4)
+    local turned = reader.document:getPageCount()
+    assert(turned ~= count, "rotation renumbers the pages")
+    tapBounds(findButton("Before").dimen)
+    assert(reader.reading_controls.panel == "find" and reader:getCurrentPage() > turned / 2,
+        "after rotation the search stays in the later half")
+    UIManager:sendEvent(Event:new("SetRotationMode", 0))
+    wait(1.1)
+    tapBounds(findButton("Done").dimen)
+    assert(not reader.reading_controls)
+    print("PASS find a place: halfway start, pages turn under the question, Done, halving to a page, rotation")
+
+    sidebar()
+    menuAction(5)
+    assert(top().name == "books_home" and not ReaderUI.instance)
+    assert(os.remove(long_book))
+    UIManager:broadcastEvent(Event:new("NotCharging"))
+    wait(0.15)
 
     -- The run ends the way the reader leaves for the Kindle: Exit to Kindle, then its confirmation.
     place(3)
