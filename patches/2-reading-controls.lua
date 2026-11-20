@@ -1,6 +1,7 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local BottomContainer = require("ui/widget/container/bottomcontainer")
 local ButtonTable = require("ui/widget/buttontable")
+local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
 local Event = require("ui/event")
 local Font = require("ui/font")
@@ -151,6 +152,11 @@ function Controls:adjustLight()
 end
 
 -- Find a place halves the pages it could be on with each answer, starting halfway through the book.
+function Controls:goToBeginning()
+    self:onClose()
+    self.reader:handleEvent(Event:new("GotoPage", 1))
+end
+
 function Controls:startFindPlace()
     local reader = self.reader
     local count = reader.document:getPageCount()
@@ -222,7 +228,7 @@ function Controls:buildSidebar(width, height)
     actions[#actions + 1] = {
         text = "Find a place",
         icon = "find-a-place",
-        callback = function() self:startFindPlace() end,
+        callback = function() self.reader:showReadingControls("find-choice") end,
     }
     actions[#actions + 1] = {
         text = "Stop for now",
@@ -346,11 +352,64 @@ function Controls:buildBar(width, height)
     return BottomContainer:new{ dimen = Geom:new{ w = width, h = height }, frame }
 end
 
+-- Find a place first offers the beginning of the book or a search. Find a page then explains the search.
+function Controls:buildFindChoice(width, height)
+    local box_width = math.floor(width * 0.9)
+    local inner_width = box_width - 2 * Size.border.window
+    local padding = Size.padding.large
+    local function text(words, face)
+        return FrameContainer:new{
+            bordersize = 0,
+            padding = padding,
+            padding_bottom = 0,
+            TextBoxWidget:new{ text = words, width = inner_width - 2 * padding, face = face },
+        }
+    end
+    local function button(words, callback)
+        return { text = words, callback = callback, font_size = 40, height = Screen:scaleBySize(90) }
+    end
+    local cancel = button("Cancel", function() self:onClose() end)
+    local title, rows, explanation
+    if self.panel == "find-help" then
+        title = "Find a page"
+        explanation = text("The book opens in the middle. Tap Before or After, and each time it gets closer. "
+            .. "The page buttons turn pages as normal. Tap Done when you see your page.",
+            Font:getFace("cfont", 34))
+        rows = { { button("Start", function() self:startFindPlace() end), cancel } }
+    else
+        local find = button("Find a page", function() self.reader:showReadingControls("find-help") end)
+        local beginning = button("Go to the beginning", function() self:goToBeginning() end)
+        rows = { { find }, { beginning }, { cancel } }
+    end
+    local frame = FrameContainer:new{
+        background = Blitbuffer.COLOR_WHITE,
+        bordersize = Size.border.window,
+        radius = Size.radius.window,
+        padding = 0,
+        VerticalGroup:new{
+            title and text(title, Font:getFace("smalltfont", 40)) or VerticalGroup:new{},
+            explanation or VerticalGroup:new{},
+            FrameContainer:new{ bordersize = 0, padding = 0, padding_top = padding,
+                ButtonTable:new{
+                    buttons = rows,
+                    width = inner_width,
+                    show_parent = self,
+                },
+            },
+        },
+    }
+    local size = frame:getSize()
+    self.bounds = Geom:new{ x = math.floor((width - size.w) / 2), y = math.floor((height - size.h) / 2), w = size.w, h = size.h }
+    return CenterContainer:new{ dimen = Geom:new{ w = width, h = height }, frame }
+end
+
 function Controls:init()
     local width = Screen:getWidth()
     local height = Screen:getHeight() - self.reader.view.footer:getHeight()
     if self.panel == "menu" then
         self[1] = self:buildSidebar(width, height)
+    elseif self.panel == "find-choice" or self.panel == "find-help" then
+        self[1] = self:buildFindChoice(width, height)
     else
         self[1] = self:buildBar(width, height)
     end
