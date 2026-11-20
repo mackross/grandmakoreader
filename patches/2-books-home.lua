@@ -74,7 +74,7 @@ function PlaceButton:init()
                     VerticalSpan:new{ width = Screen:scaleBySize(2) },
                     TextWidget:new{
                         text = place.text,
-                        face = Font:getFace(place.prominent and "smalltfont" or "cfont", place.prominent and 24 or 20),
+                        face = Font:getFace(place.prominent and "smalltfont" or "cfont", place.prominent and 28 or 24),
                         fgcolor = self.current and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK,
                     },
                 },
@@ -128,9 +128,9 @@ end
 local ShelfArrow = InputContainer:extend{}
 
 function ShelfArrow:init()
-    local height = Screen:scaleBySize(40)
+    local height = Screen:scaleBySize(44)
     local padding = Screen:scaleBySize(14)
-    self.label = TextWidget:new{ text = self.text, face = Font:getFace("cfont", 26) }
+    self.label = TextWidget:new{ text = self.text, face = Font:getFace("cfont", 30) }
     self.point = math.floor(height / 2)
     self.dimen = Geom:new{ w = self.point + self.label:getSize().w + 2 * padding, h = height }
     self.hit_area = self.dimen:copy()
@@ -186,7 +186,7 @@ local function wordButton(button)
     button.height = button.height and button.height - 2 * (border + button_margin)
     button.padding_v = button.height and 0 or Screen:scaleBySize(8)
     button.padding_h = Screen:scaleBySize(18)
-    button.text_font_size = button.text_font_size or 24
+    button.text_font_size = button.text_font_size or 30
     button.text_font_bold = false
     button.bordersize = border
     button.radius = Screen:scaleBySize(10)
@@ -204,7 +204,7 @@ local Home = Menu:extend{
     is_borderless = true,
     is_popout = false,
     items_per_page = 8,
-    items_font_size = 26,
+    items_font_size = 34,
     items_max_lines = 2,
     is_enable_shortcut = false,
 }
@@ -401,7 +401,7 @@ function Home:buildFind()
     local gap = Screen:scaleBySize(10)
     local inset = Size.padding.fullscreen - button_margin
     local width = self.inner_dimen.w - 2 * inset
-    local prompt = TextWidget:new{ text = "Which letter does it start with?", face = Font:getFace("cfont", 24) }
+    local prompt = TextWidget:new{ text = "Which letter does it start with?", face = Font:getFace("cfont", 30) }
     local key_height = math.min(Screen:scaleBySize(84),
         math.floor((self.available_height - prompt:getSize().h - 3 * gap) / rows))
 

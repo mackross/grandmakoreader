@@ -235,7 +235,7 @@ local function check()
     -- Fourteen more titles make more than one shelf. Library order ignores a leading "The", "A", or "An".
     local library_order = {
         "Bleak House", "Cranford", "Dracula", "Emma", "An Evening Walk", "Frankenstein", "The Go-Between",
-        "Great Expectations", "Ivanhoe", "Jane Eyre", "Kidnapped", "Mansfield Park", "Martin Chuzzlewit",
+        "Great Expectations", "Jamaica Inn", "Jane Eyre", "Kidnapped", "Mansfield Park", "Martin Chuzzlewit",
         "Oasis Sample", "Persuasion", "A Tale of Two Cities",
     }
     -- Two of them are FictionBook files, which name their author inside the file.
@@ -266,11 +266,11 @@ local function check()
     local shelved = {}
     for index, item in ipairs(top().item_table) do shelved[index] = item.text end
     assert(table.concat(shelved, "|") == table.concat(library_order, "|"), "the books stand in library order")
-    -- A shelf holds twelve books in portrait and seven in landscape, so G or M runs onto a second shelf.
+    -- A shelf holds nine books in portrait and six in landscape, so J or M runs onto a second shelf.
     -- An end of a shelf's letters takes as many letters as it needs to differ from its neighbour.
     local shelf_size = #top().page_items[1]
-    local shelf_letters = ({ [12] = { "B–Man", "Mar–T" }, [7] = { "B–Go", "Gr–O", "P–T" } })[shelf_size]
-    assert(shelf_letters, "a shelf holds twelve books in portrait or seven in landscape")
+    local shelf_letters = ({ [9] = { "B–Jam", "Jan–T" }, [6] = { "B–F", "G–Man", "Mar–T" } })[shelf_size]
+    assert(shelf_letters, "a shelf holds nine books in portrait or six in landscape")
     local last = top().page_num
     assert(last == #shelf_letters, "sixteen books fill the expected number of shelves")
     local function shelf(page, message)
@@ -325,9 +325,9 @@ local function check()
     tapBounds(button("E").dimen)
     shelf(1, "E opens the shelf that holds Emma")
     find()
-    local continued = shelf_size == 12 and "M" or "G"
+    local continued, first_shelf = shelf_size == 9 and "J" or "M", shelf_size == 9 and 1 or 2
     tapBounds(button(continued).dimen)
-    shelf(1, continued .. " opens its first shelf, whose right arrow shows the letter going on")
+    shelf(first_shelf, continued .. " opens its first shelf, whose right arrow shows the letter going on")
     assert(top().next_shelf.text:sub(1, 1) == continued, "the right arrow starts with the same letter")
 
     find()

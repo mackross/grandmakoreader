@@ -44,7 +44,7 @@ Each end of a shelf’s letters takes as many letters as it needs to differ from
 
 ## Find a book by letter, by Read lately, or by typing, with no sort switch
 
-Find a book sits at the bottom right and appears only with more than one shelf. It costs two rows: 12 books a shelf in portrait and 7 in landscape. The shelf stays in title order; Read lately takes the place of a sort switch. One typed search matches titles and authors together. KOReader’s own file search was left out for its filename wording and extra controls, while its keyboard, input dialog, and reading history are reused.
+Find a book sits at the bottom right and appears only with more than one shelf. Its strip takes room from the list. The shelf stays in title order; Read lately takes the place of a sort switch. One typed search matches titles and authors together. KOReader’s own file search was left out for its filename wording and extra controls, while its keyboard, input dialog, and reading history are reused.
 
 ## Read authors through KOReader’s cover browser plugin
 
@@ -53,3 +53,7 @@ Find a book sits at the bottom right and appears only with more than one shelf. 
 ## Put Exit to Kindle behind Settings, Advanced, and a confirmation
 
 Andrew asked for Advanced (Exit to Kindle) in Settings. Settings shows one row, Advanced, and Advanced shows one row, Exit to Kindle. A tap on it asks “Leave the books and go to the Kindle’s own home screen?” with Cancel and Exit to Kindle. Leaving takes three deliberate taps in three places, so a stray tap or swipe while reading cannot strand the reader on the Kindle’s home screen, which she may not know how to leave. The word Advanced tells her the row is not for her, and Settings stays free for everyday choices later. A row straight in Settings would cost one fewer tap but sit beside those everyday choices. A password or long press was left out: the confirmation is enough for an accident, and nothing here needs to be kept from her. Advanced is a side room of Settings, like Find on the shelf: no place is filled in, and the Settings button goes back. Exit to Kindle ends KOReader with code 0, as KOReader’s own Exit does, and the Kindle’s launcher returns to its home screen. The simulator checks the quit; the return to the Kindle home screen and how to reopen KOReader from there need a check on the Oasis.
+
+## Use larger type on the home screen, with fewer books on a shelf
+
+Andrew found the home screen crowded and its type too small. Titles went from size 26 to 34, which leaves 9 books a shelf in portrait and 6 in landscape where there were 12 and 7. The arrows, Find a book, the Find screen’s question and buttons, and the labels on the bottom bar grew with them. A library therefore runs to more shelves, and Read lately shows fewer books on its one screen.

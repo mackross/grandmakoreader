@@ -9,7 +9,7 @@ The Books screen lists supported titles from one folder. Returning from the read
 - `places` shows Book Shop, Book Shelf, and Settings along the bottom, with the open one filled in.
 - `exit-to-kindle` leaves KOReader from Settings, Advanced, Exit to Kindle, after a confirmation.
 - `shelf-order` files titles the way a library does, ignoring a leading The, A, or An.
-- `shelf-arrows` names the open shelf in the title and each neighbour on an arrow, and stops at both ends. Each end takes as many letters as tell it from the neighbouring shelf, such as **Books B–Man** beside **Mar–T** in portrait.
+- `shelf-arrows` names the open shelf in the title and each neighbour on an arrow, and stops at both ends. Each end takes as many letters as tell it from the neighbouring shelf, such as **Books B–Jam** beside **Jan–T** in portrait.
 - `find` reaches a book by its first letter, by Read lately, or by typing part of its title or author.
 - `shelf-open` opens a tapped book.
 - `shelf-return` preserves the reading position when you leave and reopen a book.
@@ -26,7 +26,7 @@ The Books screen lists supported titles from one folder. Returning from the read
 Preconditions: the doctor check passes and the review can seed the two fixture books.
 
 - Run `tools/review-koreader "$evidence"`. In each orientation, `01-books.png` should show the two titles and `02-reading.png` should show the opening of **An Evening Walk**.
-- Before the two-book checks, the run fills the folder with 16 titles and checks their library order, the letters on the title and arrows, and that the first and last shelves stop. G runs onto a second shelf in landscape and M in portrait, and Find checks that the right arrow of that letter’s first shelf starts with it. See `01-first-shelf.png` and `01-last-shelf.png`, and `01-book-shop.png` and `01-settings.png` for the other two places.
+- Before the two-book checks, the run fills the folder with 16 titles and checks their library order, the letters on the title and arrows, and that the first and last shelves stop. A shelf holds nine books in portrait and six in landscape, so J runs onto a second shelf in portrait and M in landscape, and Find checks that the right arrow of that letter’s first shelf starts with it. See `01-first-shelf.png` and `01-last-shelf.png`, and `01-book-shop.png` and `01-settings.png` for the other two places.
 - The run opens **Find a book** and checks a letter (`01-find.png`, `01-letter-shelf.png`), **Read lately** with seeded history (`01-read-lately.png`), and a typed title and author (`01-type-a-name.png`, `01-typed-name.png`, `01-typed-author.png`). It sets the typed text directly instead of pressing each key.
 - In Settings the run taps **Advanced** (`01-advanced.png`) and **Exit to Kindle** (`01-exit-to-kindle.png`), cancels, and returns with the Settings button. It ends by confirming **Exit to Kindle**, so the review exits 0 only when that button quits KOReader.
 - The run changes the disposable folder and sends the unplug event, then checks the shelf count. It also rotates the open shelf and checks its new dimensions.
