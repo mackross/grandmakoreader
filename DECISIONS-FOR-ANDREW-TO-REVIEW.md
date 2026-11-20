@@ -14,7 +14,7 @@ Andrew chose `mackross/grandmakoreader` as the GitHub repository and first kept 
 
 ## Use icon-pack icons in the reading menu
 
-The reading menu uses Material Symbols for Change Font and the light, Phosphor for Stop for now, and Tabler for Open another book. The SVGs and their licenses (Apache 2.0 and MIT) live in `patches/icons/`, and the patch loads them from the `icons` folder next to itself. Copy that folder along with the patches to `koreader/patches/` on the Kindle; a missing folder shows KOReader’s icon-not-found picture. Tabler’s and Phosphor’s icons used `currentColor`, which KOReader’s SVG renderer draws as gray, so the copies use plain black. [Material Symbols](https://github.com/google/material-design-icons) [Phosphor](https://github.com/phosphor-icons/core) [Tabler Icons](https://github.com/tabler/tabler-icons)
+The reading menu uses Material Symbols for Change Text Size and the light, Phosphor for Stop for now, and Tabler for Open another book. The SVGs and their licenses (Apache 2.0 and MIT) live in `patches/icons/`, and the patch loads them from the `icons` folder next to itself. Copy that folder along with the patches to `koreader/patches/` on the Kindle; a missing folder shows KOReader’s icon-not-found picture. Tabler’s and Phosphor’s icons used `currentColor`, which KOReader’s SVG renderer draws as gray, so the copies use plain black. [Material Symbols](https://github.com/google/material-design-icons) [Phosphor](https://github.com/phosphor-icons/core) [Tabler Icons](https://github.com/tabler/tabler-icons)
 
 ## Keep Wi‑Fi on only while something needs it
 

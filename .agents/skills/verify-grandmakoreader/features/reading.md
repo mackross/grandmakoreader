@@ -13,7 +13,7 @@ The reader gives the page to the book. Buttons turn pages and inward edge swipes
 ## How to get to it (user POV)
 
 - Tap a book title on Books. Press a page button to read.
-- Swipe inward from any edge, then tap **Change Font**. Use **−** and **+**.
+- Swipe inward from any edge, then tap **Change Text Size**. Use **Smaller** and **Bigger**.
 
 ## Driving it with SDL
 
@@ -27,4 +27,4 @@ Preconditions: the doctor passes and the seeded text book opens at the start.
 ## Gotchas
 
 - Begin an edge swipe near the physical edge of the reader surface. The four edges use the same panel.
-- **Change Font** applies to reflowable books. This recipe uses HTML through KOReader's reflowable engine.
+- **Change Text Size** applies to reflowable books. This recipe uses HTML through KOReader's reflowable engine.

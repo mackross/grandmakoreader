@@ -22,7 +22,7 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local Screen = Device.screen
 local power = Device:getPowerDevice()
 local page_keys = { LPgFwd = true, LPgBack = true, RPgFwd = true, RPgBack = true }
--- Books open in large print until a size is chosen with Change Font.
+-- Books open in large print until a size is chosen with Change Text Size.
 if G_reader_settings:hasNot("copt_font_size") then
     G_reader_settings:saveSetting("copt_font_size", 36)
 end
@@ -137,16 +137,11 @@ function Controls:changeFontSize(step)
     end
 end
 
-function Controls:toggleLight()
-    if power:isFrontlightOn() then
-        power:turnOffFrontlight()
-        self:onClose()
-    else
-        if not power:turnOnFrontlight() then
-            power:setIntensity(power.fl_min + 1)
-        end
-        self.reader:showReadingControls("light")
+function Controls:adjustLight()
+    if power:isFrontlightOff() and not power:turnOnFrontlight() then
+        power:setIntensity(power.fl_min + 1)
     end
+    self.reader:showReadingControls("light")
 end
 
 function Controls:putBookDown()
@@ -169,16 +164,16 @@ function Controls:buildSidebar(width, height)
     local actions = {}
     if self.reader.rolling then
         actions[#actions + 1] = {
-            text = "Change Font",
+            text = "Change Text Size",
             icon = "change-font",
             callback = function() self.reader:showReadingControls("font") end,
         }
     end
     if Device:hasFrontlight() then
         actions[#actions + 1] = {
-            text = power:isFrontlightOn() and "Turn off light" or "Turn on light",
+            text = power:isFrontlightOn() and "Adjust light" or "Turn on light",
             icon = "light",
-            callback = function() self:toggleLight() end,
+            callback = function() self:adjustLight() end,
         }
     end
     actions[#actions + 1] = {
@@ -223,21 +218,24 @@ function Controls:buildSidebar(width, height)
 end
 
 function Controls:buildBar(width, height)
-    local buttons = {}
-    local button_height = Screen:scaleBySize(62)
-    local function addButton(text, callback, font_size)
-        buttons[#buttons + 1] = {
+    -- A grid of two columns leaves room for large words on each button.
+    local rows = { {} }
+    local button_height = Screen:scaleBySize(90)
+    local function addButton(text, callback)
+        local row = rows[#rows]
+        row[#row + 1] = {
             text = text,
             callback = callback,
-            font_size = font_size or 28,
+            font_size = 40,
             height = button_height,
             enabled = callback ~= nil,
             focusable = callback ~= nil,
         }
     end
     if self.panel == "font" then
-        addButton("−", function() self:changeFontSize(-2) end, 42)
-        addButton("+", function() self:changeFontSize(2) end, 42)
+        addButton("Smaller", function() self:changeFontSize(-2) end)
+        addButton("Bigger", function() self:changeFontSize(2) end)
+        rows[2] = {}
     else
         local level = power:frontlightIntensity()
         local function addBrightnessButton(text, target)
@@ -252,6 +250,11 @@ function Controls:buildBar(width, height)
         end
         addBrightnessButton("Darker", level - 1)
         addBrightnessButton("Brighter", level + 1)
+        rows[2] = {}
+        addButton("Turn off", function()
+            power:turnOffFrontlight()
+            self:onClose()
+        end)
     end
     addButton("Done", function() self:onClose() end)
 
@@ -260,7 +263,7 @@ function Controls:buildBar(width, height)
         bordersize = Size.border.window,
         padding = 0,
         ButtonTable:new{
-            buttons = { buttons },
+            buttons = rows,
             width = width - 2 * Size.border.window,
             show_parent = self,
         },
