@@ -1,12 +1,13 @@
--- Who wrote each book, as the book file itself says.
+-- Each book's title and authors, as the book file itself says.
 -- KOReader runs only the numbered files in this folder. Patches load this one with dofile.
 --
 -- KOReader's cover browser plugin reads a book's details in a background process and keeps them in
 -- its own database. This borrows that, so each book is read once and the screen never waits for it.
 local ffiUtil = require("ffi/util")
+local UIManager = require("ui/uimanager")
 local logger = require("logger")
 
-local Authors = {}
+local Details = {}
 
 -- The cover browser's module lives on the plugin's own path. Once loaded, the plugin shares it.
 local manager
@@ -18,32 +19,37 @@ do
     if ok then
         manager = result
     else
-        logger.warn("Authors are unavailable without the cover browser plugin:", result)
+        logger.warn("Book details are unavailable without the cover browser plugin:", result)
     end
 end
 
 -- The cover browser announces a newly created database with a notice. Create it without one.
 if manager and not manager.db_created then
-    local UIManager = require("ui/uimanager")
     local show = UIManager.show
     UIManager.show = function() end
     local ok, message = pcall(manager.createDB, manager)
     UIManager.show = show
     if not ok then
-        logger.warn("Authors are unavailable without the book details database:", message)
+        logger.warn("Book details are unavailable without their database:", message)
         manager = nil
     end
 end
 
---- The authors of a book, such as "Jane Austen", or nil while the book is unread or names none.
-function Authors.of(path)
+--- The title of a book, such as "Pride and Prejudice", or nil while the book is unread or names none.
+function Details.title(path)
     local details = manager and manager:getDocProps(path)
+    local title = details and details.title and details.title:gsub("%s+", " "):match("^ ?(.-) ?$")
+    if title and title ~= "" then return title end
+end
+
+--- The authors of a book, such as "Jane Austen", or nil while the book is unread or names none.
+function Details.authors(path)
+    local details = manager and manager:getDocProps(path)
+    -- KOReader keeps several authors on separate lines, and a name without a middle name
+    -- can come with a doubled space.
     local authors = details and details.authors
-    if authors and authors ~= "" then
-        -- KOReader keeps several authors on separate lines, and a name without a middle name
-        -- can come with a doubled space.
-        return (authors:gsub("\n", ", "):gsub("%s+", " "))
-    end
+        and details.authors:gsub("\n", ", "):gsub("%s+", " "):match("^ ?(.-) ?$")
+    if authors and authors ~= "" then return authors end
 end
 
 -- Whether an earlier batch is still being read. The cover browser only notices a finished batch
@@ -55,10 +61,11 @@ local function reading()
     return false
 end
 
---- Starts reading, in the background, those of the given books that have not been read yet.
--- While an earlier batch is still being read this does nothing, so call it again later for the rest.
--- Starting a new batch would stop the earlier one, and a book stopped three times is given up on.
-function Authors.read(paths)
+--- Starts reading, in the background, those of the given books that have not been read yet, and
+-- calls done once at least one of them has been. While an earlier batch is still being read this does nothing, so
+-- call it again later for the rest. Starting a new batch would stop the earlier one, and a book
+-- stopped three times is given up on.
+function Details.read(paths, done)
     if not manager or reading() then return end
     local unread = {}
     for _, path in ipairs(paths) do
@@ -69,7 +76,19 @@ function Authors.read(paths)
     if manager:extractInBackground(unread) then
         -- Have the temporary cache removed once the batch ends.
         manager:cleanUp()
+        local function check()
+            if reading() then
+                UIManager:scheduleIn(1, check)
+                return
+            end
+            -- A batch that read nothing, such as one that crashed, changes nothing on the screen.
+            -- Calling done then would start the same batch again and redraw the screen for nothing.
+            for _, book in ipairs(unread) do
+                if manager:getDocProps(book.filepath) then return done() end
+            end
+        end
+        UIManager:scheduleIn(1, check)
     end
 end
 
-return Authors
+return Details

@@ -56,15 +56,19 @@ Titles follow the ALA Filing Rules in `patches/library.lua`: a leading The, A, o
 
 ## Label shelves like encyclopedia spines when a letter fills more than one
 
-Each end of a shelf’s letters takes as many letters as it needs to differ from the neighbouring shelf, as on encyclopedia volumes such as “S–Sn” and “So–Sz”. A library with many S titles reads “C–Sea”, “Sec–St”, and “Sw–W” in portrait, so the title and both arrows stay distinct, and a letter that goes on past the shelf Find opens shows on that shelf’s right arrow. An end stops at three letters, or at fewer on every shelf when the widest labels would not fit beside the title. Two titles that agree in their first three letters on either side of a shelf break, such as The Secret Adversary and The Secret Agent, give both shelves the same end, such as “Ro–Sec” beside “Sec–So”. Shelves keep a fixed number of books rather than breaking at letters, so none is left part-empty.
+Each end of a shelf’s letters takes as many letters as it needs to differ from the neighbouring shelf, as on encyclopedia volumes such as “S–Sn” and “So–Sz”. A library with many S titles reads “C–Sea”, “Sec–St”, and “Sw–W” in portrait, so the title and both arrows stay distinct, and a letter that goes on past the shelf Find opens shows on that shelf’s right arrow. An end stops at three letters, or at fewer on every shelf when the widest labels would not fit beside the title. Two titles that agree in their first three letters on either side of a shelf break, such as The Secret Adversary and The Secret Agent, give both shelves the same end, such as “Ro–Sec” beside “Sec–So”. Shelves break by how many rows fit rather than at letters, so none is left part-empty; a book with its author on a second line takes more room than one without.
 
 ## Look up a book by letter, by Read lately, or by typing, with no sort switch
 
 The button reads “Look up a book”, Andrew’s wording, spelled as two words. He found “Find a book” confusing, because it could mean finding one in the Book Shop; looking a book up is what she would do in a library’s catalogue. “Find a shelf” was tried and dropped, because Read lately and a typed name lead to books. It spans the bottom of the list in the titles’ type size, as Andrew asked, and appears only with more than one shelf. Its strip takes room from the list. The shelf stays in title order; Read lately takes the place of a sort switch. One typed search matches titles and authors together. KOReader’s own file search was left out for its filename wording and extra controls, while its keyboard, input dialog, and reading history are reused.
 
-## Read authors through KOReader’s cover browser plugin
+## Read titles and authors through KOReader’s cover browser plugin
 
-`patches/authors.lua` borrows the cover browser’s background reader and database for each book’s author, so the plugin has to stay installed on the Kindle. A typed author matches a book once it has been read in the background. The speed of that on the Oasis is unmeasured.
+`patches/details.lua` borrows the cover browser’s background reader and database for each book’s title and author, so the plugin has to stay installed on the Kindle. A typed author matches a book once it has been read in the background. The speed of that on the Oasis is unmeasured.
+
+## Name books by the title inside them, with the author on a line below
+
+Andrew found the shelf showing file names. Each book now shows the title its file gives, and its file name only until the book has been read in the background or when the file names no title. When a reading finishes, the open shelf takes up the new titles by itself and stays on the same shelf number, even if a renamed book moves to another shelf. Andrew asked for the author on a second line under the title, in smaller grey type (size 32 under the titles’ 40), knowing it means fewer books a shelf: a shelf of books that all name their authors holds about 5 in portrait and 3 in landscape. The same two lines show in Read lately and a typed search, where the author used to sit at the right. A file whose own title is poor, such as some PDFs’, shows that title; there is no way to rename a book on the Kindle.
 
 ## Put Exit to Kindle behind Settings, Advanced, and a confirmation
 

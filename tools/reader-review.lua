@@ -314,16 +314,18 @@ local function check()
         "Great Expectations", "Guy Mannering", "Jane Eyre", "Jude the Obscure", "Kidnapped", "Mansfield Park",
         "Oasis Sample", "Persuasion", "A Tale of Two Cities",
     }
-    -- Two of them are FictionBook files, which name their author inside the file.
-    local written_by = { ["Jane Eyre"] = { "Charlotte", "Brontë" }, ["Persuasion"] = { "Jane", "Austen" } }
-    local extras, authored = {}, {}
+    -- Two of them are FictionBook files, which name their title and author inside the file, under file
+    -- names that are not their titles, as a downloaded book's often are.
+    local written_by = { ["Jane Eyre"] = { "Charlotte", "Brontë", "jane-eyre-bronte" },
+        ["Persuasion"] = { "Jane", "Austen", "persuasion-austen" } }
+    local extras = {}
     for _, title in ipairs(library_order) do
         if not lfs.attributes(os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. title .. ".html") then
             local author = written_by[title]
-            extras[#extras + 1] = os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. title .. (author and ".fb2" or ".txt")
+            extras[#extras + 1] = os.getenv("XDG_DOCUMENTS_DIR") .. "/"
+                .. (author and author[3] .. ".fb2" or title .. ".txt")
             file = assert(io.open(extras[#extras], "w"))
             if author then
-                authored[#authored + 1] = extras[#extras]
                 file:write(string.format('<?xml version="1.0" encoding="UTF-8"?>\n'
                     .. '<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info>'
                     .. '<author><first-name>%s</first-name><last-name>%s</last-name></author>'
@@ -339,14 +341,24 @@ local function check()
     assert(#extras == 14)
     UIManager:broadcastEvent(Event:new("NotCharging"))
     wait(0.15)
-    local shelved = {}
-    for index, item in ipairs(top().item_table) do shelved[index] = item.text end
-    assert(table.concat(shelved, "|") == table.concat(library_order, "|"), "the books stand in library order")
-    -- A shelf holds eight books in portrait and five in landscape, so G or J runs onto a second shelf.
-    -- An end of a shelf's letters takes as many letters as it needs to differ from its neighbour.
-    local shelf_size = #top().page_items[1]
-    local shelf_letters = ({ [8] = { "B–Gr", "Gu–T" }, [5] = { "B–E", "F–Ja", "Ju–P", "T" } })[shelf_size]
-    assert(shelf_letters, "a shelf holds eight books in portrait or five in landscape")
+    local function shelved()
+        local texts = {}
+        for index, item in ipairs(top().item_table) do texts[index] = item.text end
+        return table.concat(texts, "|")
+    end
+    assert(shelved():find("persuasion-austen", 1, true), "a book's file name stands in until its title is read")
+    -- The home screen has KOReader read each book's details in the background, and the shelf takes
+    -- up their titles by itself once they are read.
+    for _ = 1, 60 do
+        if shelved() == table.concat(library_order, "|") then break end
+        wait(0.25)
+    end
+    assert(shelved() == table.concat(library_order, "|"),
+        "the books stand in library order under the titles inside them: " .. shelved())
+    -- A shelf holds eight one-line books in portrait and five in landscape, and fewer when a book's
+    -- author takes a line under its title, so in portrait G runs onto a second shelf. An end of a
+    -- shelf's letters takes as many letters as it needs to differ from its neighbour.
+    local shelf_letters = landscape and { "B–E", "F–G", "J–M", "O–T" } or { "B–Gr", "Gu–O", "P–T" }
     local last = top().page_num
     assert(last == #shelf_letters, "sixteen books fill the expected number of shelves")
     local function shelf(page, message)
@@ -401,11 +413,12 @@ local function check()
     find()
     tapBounds(button("E").dimen)
     shelf(1, "E opens the shelf that holds Emma")
-    find()
-    local continued, first_shelf = landscape and "J" or "G", landscape and 2 or 1
-    tapBounds(button(continued).dimen)
-    shelf(first_shelf, continued .. " opens its first shelf, whose right arrow shows the letter going on")
-    assert(top().next_shelf.text:sub(1, 1) == continued, "the right arrow starts with the same letter")
+    if not landscape then
+        find()
+        tapBounds(button("G").dimen)
+        shelf(1, "G opens its first shelf, whose right arrow shows the letter going on")
+        assert(top().next_shelf.text:sub(1, 1) == "G", "the right arrow starts with the same letter")
+    end
 
     find()
     tapBounds(button("Read lately").dimen)
@@ -455,21 +468,11 @@ local function check()
     assert(#top().item_table == 1 and top().item_table[1].text == "No book or author has “zebra” in its name"
         and not top().item_table[1].callback, "a name no book or author has says so")
 
-    -- The home screen has KOReader read each book's details in the background. Wait for the two authors.
-    local details = assert(package.loaded.bookinfomanager, "the home screen loads KOReader's book details")
-    for _ = 1, 40 do
-        local read_all = true
-        for _, path in ipairs(authored) do
-            read_all = read_all and details:getDocProps(path) ~= nil
-        end
-        if read_all then break end
-        wait(0.25)
-    end
     local function named(text)
         tapBounds(typeName(text))
         local rows = {}
         for index, item in ipairs(top().item_table) do
-            rows[index] = item.text .. " by " .. tostring(item.mandatory)
+            rows[index] = item.text .. " by " .. tostring(item.author)
         end
         return table.concat(rows, "|")
     end

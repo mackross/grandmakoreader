@@ -22,6 +22,7 @@ local QuickStart = require("ui/quickstart")
 local ReadHistory = require("readhistory")
 local ReaderUI = require("apps/reader/readerui")
 local Size = require("ui/size")
+local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local TitleBar = require("ui/widget/titlebar")
 local UIManager = require("ui/uimanager")
@@ -34,7 +35,7 @@ local util = require("util")
 
 -- The helpers and icons this patch loads ship in the folder it runs from.
 local patch_dir = debug.getinfo(1, "S").source:match("^@(.*/)")
-local Authors = dofile(patch_dir .. "authors.lua")
+local Details = dofile(patch_dir .. "details.lua")
 local Library = dofile(patch_dir .. "library.lua")
 local books_dir = Device:isKindle() and Device.home_dir .. "/books"
     or os.getenv("XDG_DOCUMENTS_DIR") or Device.home_dir .. "/books"
@@ -499,8 +500,61 @@ function Home:buildFind()
     return screen
 end
 
+-- A book's author goes on a line of its own under the title, in smaller type.
+local function authorLine(author, width)
+    return TextWidget:new{
+        text = author,
+        face = Font:getFace("smallinfofont", 32),
+        max_width = width,
+        fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+    }
+end
+
+-- Menu fills each page by the lines of the titles alone. Fill them again, giving each author a line.
+function Home:setupItemHeights()
+    Menu.setupItemHeights(self)
+    local author_height = authorLine("A"):getSize().h
+    local page, height = {}, 0
+    self.page_items = {}
+    for index, item in ipairs(self.item_table) do
+        if item.author then item.height = item.height + author_height end
+        height = height + item.height
+        if height > self.available_height and #page > 0 then
+            table.insert(self.page_items, page)
+            page, height = {}, item.height
+        end
+        table.insert(page, index)
+    end
+    table.insert(self.page_items, page)
+end
+
 function Home:updateItems(...)
     Menu.updateItems(self, ...)
+    -- Menu sets a row's text alone in its place, so set the title over the author there instead.
+    for _, row in ipairs(self.item_group) do
+        local author = row.entry and row.entry.author
+        local line = author and row._underline_container[1][1][2][1]
+        local title = line and line[2]
+        -- Only a title Menu wraps over lines has room set aside for it. Leave any other as it is.
+        if title and title.width then
+            local author_line = authorLine(author, title.width)
+            line[2] = VerticalGroup:new{
+                align = "left",
+                TextBoxWidget:new{
+                    text = title.text,
+                    face = title.face,
+                    width = title.width,
+                    height = row.dimen.h - 2 * Size.span.vertical_default - row.linesize - author_line:getSize().h,
+                    height_adjust = true,
+                    height_overflow_show_ellipsis = true,
+                    alignment = "left",
+                    bold = title.bold,
+                },
+                author_line,
+            }
+            title:free()
+        end
+    end
     -- While a name is being typed the letters are put away, so only the text box asks for anything.
     if self.view and self.view.kind == "find" and not self.name_dialog then
         self.item_group[1] = self:buildFind()
@@ -555,7 +609,8 @@ function Home:onPrevPage()
     return self.page <= 1 or self:onGotoPage(self.page - 1)
 end
 
--- Every book in the folder, in library order.
+-- Every book in the folder, in library order, named by its own title, or by its file name until
+-- that has been read.
 local function allBooks()
     local books = {}
     util.makePath(books_dir)
@@ -565,7 +620,8 @@ local function allBooks()
             if filename:sub(1, 1) ~= "." and lfs.attributes(path, "mode") == "file"
                     and DocumentRegistry:hasProvider(path) then
                 books[#books + 1] = {
-                    text = filename:match("^(.+)%.%w+$") or filename,
+                    text = Details.title(path) or filename:match("^(.+)%.%w+$") or filename,
+                    author = Details.authors(path),
                     path = path,
                     callback = function()
                         ReaderUI:showReader(path)
@@ -610,14 +666,11 @@ local function recentBooks(books)
     return recent
 end
 
--- The books with the given words in their name or their author's, each showing its author.
+-- The books with the given words in their name or their author's.
 local function namedBooks(books, text)
     local named = {}
     for _, book in ipairs(books) do
-        local authors = Authors.of(book.path)
-        if Library.contains(book.text, text) or authors and Library.contains(authors, text) then
-            book.mandatory = authors
-            book.mandatory_dim = true
+        if Library.contains(book.text, text) or book.author and Library.contains(book.author, text) then
             named[#named + 1] = book
         end
     end
@@ -744,10 +797,17 @@ function showHome(place_id, focused_file, view)
     end
     local books = place_id == "shelf" and allBooks() or nil
     if books then
-        -- Books added since the last visit have their authors read while the shelf is on show.
+        -- Books added since the last visit have their titles and authors read while the shelf is on
+        -- show. The open shelf then takes up their titles, unless a name is being typed, and stays
+        -- where it was rather than following a book that moved.
         local paths = {}
         for index, book in ipairs(books) do paths[index] = book.path end
-        Authors.read(paths)
+        Details.read(paths, function()
+            if not home or home.place ~= "shelf" or home.name_dialog then return end
+            local page = home.page
+            showHome("shelf", nil, home.view)
+            home:onGotoPage(math.max(1, math.min(page, home.page_num)))
+        end)
     end
     Device.screen:setWindowTitle("Books")
     home = Home:new{

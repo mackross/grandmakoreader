@@ -8,8 +8,8 @@ The Books screen lists supported titles from one folder. Returning from the read
 - `shelf-refresh` updates the list after unplugging and fits the active orientation.
 - `places` shows Book Shop, Book Shelf, and Settings along the bottom, with the open one filled in. Settings lists [Check for updates](auto-update.md) and Advanced.
 - `exit-to-kindle` leaves KOReader from Settings, Advanced, Exit to Kindle, after a confirmation.
-- `shelf-order` files titles the way a library does, ignoring a leading The, A, or An.
-- `shelf-arrows` names the open shelf in the title and each neighbour on an arrow, and stops at both ends. Each end takes as many letters as tell it from the neighbouring shelf, such as **B–Gr** beside **Gu–T** in portrait. Portrait titles a shelf by its letters alone; landscape says **Books** first, as in **Books F–Ja**.
+- `shelf-order` names each book by the title inside it, with its author on a smaller line below, and files titles the way a library does, ignoring a leading The, A, or An.
+- `shelf-arrows` names the open shelf in the title and each neighbour on an arrow, and stops at both ends. Each end takes as many letters as tell it from the neighbouring shelf, such as **B–Gr** beside **Gu–O** in portrait. Portrait titles a shelf by its letters alone; landscape says **Books** first, as in **Books F–G**.
 - `find` reaches a book by its first letter, by Read lately, or by typing part of its title or author.
 - `shelf-open` opens a tapped book.
 - `shelf-return` preserves the reading position when you leave and reopen a book.
@@ -26,7 +26,7 @@ The Books screen lists supported titles from one folder. Returning from the read
 Preconditions: the doctor check passes and the review can seed the two fixture books.
 
 - Run `tools/review-koreader "$evidence"`. In each orientation, `01-books.png` should show the two titles and `02-reading.png` should show the opening of **An Evening Walk**.
-- Before the two-book checks, the run fills the folder with 16 titles and checks their library order, the letters on the title and arrows, and that the first and last shelves stop. A shelf holds eight books in portrait and five in landscape, so G runs onto a second shelf in portrait and J in landscape, and Find checks that the right arrow of that letter’s first shelf starts with it. See `01-first-shelf.png` and `01-last-shelf.png`, and `01-book-shop.png` and `01-settings.png` for the other two places.
+- Before the two-book checks, the run fills the folder with 16 titles and checks their library order, the letters on the title and arrows, and that the first and last shelves stop. Two of them are FictionBook files whose file names are not their titles: the run checks that a file name stands in at first and that the shelf takes up the titles inside them by itself. A shelf holds eight one-line books in portrait and five in landscape, and fewer when authors take a second line, so G runs onto a second shelf in portrait, and Find checks that the right arrow of its first shelf starts with G. See `01-first-shelf.png` and `01-last-shelf.png`, and `01-book-shop.png` and `01-settings.png` for the other two places.
 - The run opens **Look up a book** and checks a letter (`01-find.png`, `01-letter-shelf.png`), **Read lately** with seeded history (`01-read-lately.png`), and a typed title and author (`01-type-a-name.png`, `01-typed-name.png`, `01-typed-author.png`). It sets the typed text directly instead of pressing each key.
 - In Settings the run taps **Advanced** (`01-advanced.png`) and **Exit to Kindle** (`01-exit-to-kindle.png`), cancels, and returns with the Settings button. It ends by confirming **Exit to Kindle**, so the review exits 0 only when that button quits KOReader.
 - The run changes the disposable folder and sends the unplug event, then checks the shelf count. It also rotates the open shelf and checks its new dimensions.
@@ -35,7 +35,7 @@ Preconditions: the doctor check passes and the review can seed the two fixture b
 ## Gotchas
 
 - **Look up a book** and the arrows appear only when the books fill more than one shelf. Two books show neither.
-- Authors come from KOReader’s cover browser plugin, which reads each book in a background process. A typed author matches once that has finished; the run waits for it.
+- Titles and authors come from KOReader’s cover browser plugin, which reads each book in a background process. Until then the shelf shows the file name and no author; the shelf rebuilds once a batch has read something, and the run waits for it.
 - The simulator cannot show the Kindle's own home screen. Exit to Kindle only ends KOReader there.
 - On Kindle, copy books to the top-level `books` folder. The simulator creates its own temporary library.
 - The reading menu says **Open another book**, while the end-of-book dialog says **Put back on shelf**. The [end-of-book action](end-of-book.md) marks the book read instead of keeping the place.
