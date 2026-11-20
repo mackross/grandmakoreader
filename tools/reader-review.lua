@@ -94,12 +94,86 @@ local function top()
     return UIManager:getTopmostVisibleWidget()
 end
 
+local NetworkMgr = require("ui/network/manager")
+local Wifi -- Loaded once every patch has run.
+
+local function checkWifi()
+    -- The simulator connects as soon as the radio is on. Shorten the timers to keep the run brief.
+    Wifi.grace, Wifi.poll, Wifi.connect_timeout = 0.4, 0.1, 0.5
+    local function on() return NetworkMgr:isWifiOn() end
+    Wifi:update()
+    wait(0.6)
+    assert(not on(), "Wi-Fi left on before startup turns off when nothing needs it")
+
+    local answers = {}
+    Wifi:need("store", 5, function(connected) answers.store = connected end)
+    wait(0.2)
+    assert(on() and answers.store == true, "the first need connects and answers true")
+    Wifi:need("update", 5, function(connected) answers.update = connected end)
+    assert(answers.update == true, "a need registered while connected answers at once")
+    assert(Wifi:isNeeded("update"), "isNeeded sees other needs")
+    Wifi:release("store")
+    assert(not Wifi:isNeeded("update"), "isNeeded ignores the named need")
+    wait(0.6)
+    assert(on(), "an earlier need released first leaves the later one connected")
+    Wifi:release("update")
+    wait(0.2)
+    assert(on(), "Wi-Fi waits out the grace period after the last need")
+    wait(0.4)
+    assert(not on(), "Wi-Fi turns off after the grace period")
+
+    Wifi:need("short", 0.5)
+    wait(0.3)
+    Wifi:need("short", 0.5)
+    wait(0.7)
+    assert(on(), "registering a need again extends it")
+    wait(0.5)
+    assert(not on(), "an unreleased need times out")
+
+    local connected = NetworkMgr.isConnected
+    NetworkMgr.isConnected = function() return false end
+    Wifi:need("cancelled", 5, function(ok, reason) answers.cancelled = reason or ok end)
+    Wifi:release("cancelled")
+    assert(answers.cancelled == "ended", "releasing a need before the connection answers ended")
+    Wifi:need("background", 5, function(ok, reason) answers.background = reason or ok end)
+    wait(0.3)
+    assert(answers.background == nil, "a need waits while connecting")
+    Wifi:need("store-late", 5, function(ok, reason) answers.late = reason or ok end)
+    wait(0.35)
+    assert(answers.background == "unreachable" and answers.late == nil and Wifi.needs["store-late"],
+        "an earlier attempt timing out leaves a later need its own full connect timeout")
+    assert(Wifi:hasProblem(), "an unreachable connection is recorded for settings")
+    wait(0.3)
+    assert(answers.late == "unreachable" and not next(Wifi.needs), "the later need times out on its own")
+    wait(0.5)
+    NetworkMgr.isConnected = connected
+    assert(not on(), "Wi-Fi turns off after the failed needs")
+    Wifi:report(true)
+    assert(not Wifi:hasProblem(), "a reached request clears the settings problem")
+
+    Wifi:setOff(true)
+    Wifi:need("blocked", 5, function(ok, reason) answers.blocked = reason or ok end)
+    wait(0.2)
+    assert(answers.blocked == "off" and not on(), "the off setting refuses every need")
+    Wifi:setOff(false)
+    Wifi.off_seconds = 0.3
+    Wifi:setOff(true)
+    wait(0.4)
+    Wifi:need("after-off", 5, function(ok) answers.after_off = ok end)
+    wait(0.2)
+    assert(answers.after_off == true, "Wi-Fi off expires by itself")
+    Wifi:release("after-off")
+    print("PASS wifi: startup takeover, overlapping needs, grace, extension, timeout, per-need connect timeout, problem report, off setting and its expiry")
+end
+
 local function check()
     local width, height = Screen:getWidth(), Screen:getHeight()
     local landscape = width > height
+    Wifi = require("grandma/wifi")
     local home = top()
     assert(home.name == "books_home" and #home.item_table == 2, "startup opens the fixed Books folder")
     screenshot("01-books")
+    if not landscape then checkWifi() end
 
     local added = os.getenv("XDG_DOCUMENTS_DIR") .. "/Recently added.txt"
     local file = assert(io.open(added, "w"))
@@ -258,9 +332,13 @@ local function check()
     assert(footer.battery_percent == 9 and footer.battery_label[1].text:find("9%% battery remaining"))
     screenshot("06-low-battery")
 
+    local slept_answer
+    Wifi:need("sleep", 60, function(ok, reason) slept_answer = reason or ok end)
     sidebar()
     menuAction(3)
     assert(Device.screen_saver_mode and not reader.reading_controls, "Stop for now activates the simulator screensaver")
+    assert((slept_answer == true or slept_answer == "asleep") and not next(Wifi.needs) and not NetworkMgr:isWifiOn(),
+        "sleep ends every Wi-Fi need and turns the radio off")
     screenshot("07-stop-for-now")
     UIManager.event_handlers.Resume()
     wait(0.4)

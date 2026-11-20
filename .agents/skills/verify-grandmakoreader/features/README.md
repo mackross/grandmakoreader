@@ -7,3 +7,4 @@ Use the [launch, doctor, and evidence workflow](../SKILL.md) to prepare the runt
 - [Frontlight and sleep](device-controls.md) covers frontlight steps, dismissal, and the sleep preview.
 - [Low battery](battery.md) covers the warning threshold and recovery.
 - [End of book](end-of-book.md) covers the four choices, confirmation, and persisted effects.
+- [Wi‑Fi](wifi.md) covers connecting while something needs it, disconnecting when idle, failures, and sleep.
