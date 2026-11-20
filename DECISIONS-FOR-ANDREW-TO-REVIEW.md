@@ -29,3 +29,19 @@ The updater applies a release by restarting KOReader. It restarts at once only w
 The updater borrows the radio from `patches/2-wifi.lua` with the `auto-update` need and tells that module whether the internet answered, which feeds the planned settings line. It keeps its own radio switching only for when that module is missing or fails to load, so a fix can still arrive. Turning Wi-Fi off for a day stops updates for that day. Checks are skipped below 10% battery, the same threshold as the low-battery warning.
 
 `tools/review-auto-update` covers download, staging, restart rules, rollback, reopening the book, and the Wi-Fi hand-off against a stand-in for GitHub. The real GitHub download over verified HTTPS was checked by hand in the simulator. Joining the saved network, the restart through Kindle's launcher script, and wake detection still need a check on the Oasis before it ships.
+
+## Make the home screen a Book Shelf with a Book Shop and Settings beside it
+
+Three places sit along the bottom: Book Shop, Book Shelf in the centre and raised over the bar, and Settings. Book Shop and Settings each show “Coming soon” until they have content. The shop and shelf icons were drawn for this project and live with the others in `patches/icons/`.
+
+## File the shelf in library order and name shelves by letter
+
+Titles follow the ALA Filing Rules in `patches/library.lua`: a leading The, A, or An is ignored, words file one at a time, and numbers come before letters. The stock page controls are gone. The title names the open shelf, such as “Books B–L”, and an arrow on each side shows the neighbouring shelf’s letters. Shelves stop at both ends. The labels use only the first letter, so a letter that fills more than one shelf repeats; that case is being worked on separately.
+
+## Find a book by letter, by Read lately, or by typing, with no sort switch
+
+Find a book sits at the bottom right and appears only with more than one shelf. It costs two rows: 12 books a shelf in portrait and 7 in landscape. The shelf stays in title order; Read lately takes the place of a sort switch. One typed search matches titles and authors together. KOReader’s own file search was left out for its filename wording and extra controls, while its keyboard, input dialog, and reading history are reused.
+
+## Read authors through KOReader’s cover browser plugin
+
+`patches/authors.lua` borrows the cover browser’s background reader and database for each book’s author, so the plugin has to stay installed on the Kindle. A typed author matches a book once it has been read in the background. The speed of that on the Oasis is unmeasured.

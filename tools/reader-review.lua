@@ -190,6 +190,207 @@ local function check()
     wait(0.25)
     assert(top().dimen.w == width and #top().item_table == 2, "the shelf returns to its original size")
 
+    local function place(index)
+        tap(width * (index - 0.5) / 3, height - 40)
+        return top()
+    end
+    assert(place(1).place == "shop" and top().title == "Book Shop", "the left button opens the Book Shop")
+    screenshot("01-book-shop")
+    assert(place(3).place == "settings" and top().title == "Settings", "the right button opens Settings")
+    screenshot("01-settings")
+    UIManager:broadcastEvent(Event:new("NotCharging"))
+    wait(0.15)
+    assert(top().place == "settings", "a refresh stays on the open place")
+    assert(place(2).place == "shelf" and #top().item_table == 2, "the centre button returns to the shelf")
+
+    -- Fourteen more titles make two shelves. Library order ignores a leading "The", "A", or "An".
+    local library_order = {
+        "Bleak House", "Cranford", "Dracula", "Emma", "An Evening Walk", "Frankenstein", "Great Expectations",
+        "The Hobbit", "Ivanhoe", "Jane Eyre", "Kidnapped", "Lorna Doone", "Middlemarch", "Oasis Sample",
+        "Persuasion", "A Tale of Two Cities",
+    }
+    local filed_under = "BCDEEFGHIJKLMOPT"
+    -- Two of them are FictionBook files, which name their author inside the file.
+    local written_by = { ["Jane Eyre"] = { "Charlotte", "Brontë" }, ["Persuasion"] = { "Jane", "Austen" } }
+    local extras, authored = {}, {}
+    for _, title in ipairs(library_order) do
+        if not lfs.attributes(os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. title .. ".html") then
+            local author = written_by[title]
+            extras[#extras + 1] = os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. title .. (author and ".fb2" or ".txt")
+            file = assert(io.open(extras[#extras], "w"))
+            if author then
+                authored[#authored + 1] = extras[#extras]
+                file:write(string.format('<?xml version="1.0" encoding="UTF-8"?>\n'
+                    .. '<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"><description><title-info>'
+                    .. '<author><first-name>%s</first-name><last-name>%s</last-name></author>'
+                    .. '<book-title>%s</book-title><lang>en</lang></title-info></description>'
+                    .. '<body><section><p>This is a temporary book used to test the shelves.</p></section></body>'
+                    .. '</FictionBook>\n', author[1], author[2], title))
+            else
+                file:write("This is a temporary book used to test the shelves.")
+            end
+            file:close()
+        end
+    end
+    assert(#extras == 14)
+    UIManager:broadcastEvent(Event:new("NotCharging"))
+    wait(0.15)
+    local shelved = {}
+    for index, item in ipairs(top().item_table) do shelved[index] = item.text end
+    assert(table.concat(shelved, "|") == table.concat(library_order, "|"), "the books stand in library order")
+    local function button(text, widget)
+        widget = widget or top()
+        if widget.text == text and widget.label_widget then return widget end
+        for _, child in ipairs(widget) do
+            local found = type(child) == "table" and button(text, child)
+            if found then return found end
+        end
+    end
+    local shelf_size = #top().page_items[1]
+    local function letters(first, last)
+        first, last = filed_under:sub(first, first), filed_under:sub(last, last)
+        return first == last and first or first .. "–" .. last
+    end
+    local last = top().page_num
+    assert(last > 1, "sixteen books need more than one shelf")
+    local function lettersOf(page)
+        if page >= 1 and page <= last then
+            return letters((page - 1) * shelf_size + 1, math.min(page * shelf_size, #library_order))
+        end
+    end
+    local function shelf(page, message)
+        local previous, next_shelf
+        for _, arrow in ipairs(top().shelf_arrows) do
+            if arrow.points_left then previous = arrow.text else next_shelf = arrow.text end
+        end
+        assert(not top().view and top().page == page and top().page_num == last and button("Find a book")
+            and top().title_bar.title_widget.text == "Books " .. lettersOf(page)
+            and previous == lettersOf(page - 1) and next_shelf == lettersOf(page + 1), message)
+    end
+    shelf(1, "the first shelf is titled by its letters and points right to the second")
+    screenshot("01-first-shelf")
+    turnPage(false)
+    shelf(1, "the page-back key stops at the first shelf")
+    local right_arrow
+    for page = 2, last do
+        right_arrow = top().next_shelf.dimen:copy()
+        tapBounds(right_arrow)
+        shelf(page, "the right arrow opens the next shelf, which points back to the one before")
+    end
+    screenshot("01-last-shelf")
+    tapBounds(right_arrow)
+    shelf(last, "the place where the right arrow was does nothing on the last shelf")
+    turnPage(true)
+    shelf(last, "the page-forward key stops at the last shelf")
+    swipe(width / 2, height / 2, -240, 0)
+    shelf(last, "a swipe stops at the last shelf")
+    tapBounds(top().previous_shelf.dimen)
+    shelf(last - 1, "the left arrow goes back a shelf")
+    turnPage(true)
+    shelf(last, "the page-forward key turns to the next shelf")
+    swipe(width / 2, height / 2, 240, 0)
+    shelf(last - 1, "a swipe turns back a shelf")
+    print("PASS shelves: library order, lettered arrows, both ends stop")
+
+    local function title() return top().title_bar.title_widget.text end
+    local function find()
+        tapBounds(button("Find a book").dimen)
+        assert(top().view and top().view.kind == "find" and title() == "Find a book", "Find a book opens the Find screen")
+    end
+    find()
+    screenshot("01-find")
+    assert(not button("A").enabled and not button("N").enabled and button("T").enabled and not button("0–9"),
+        "a letter is offered only where a title is filed, ignoring a leading article")
+    tapBounds(button("A").dimen)
+    assert(top().view and top().view.kind == "find", "a letter without books does nothing")
+    tapBounds(button("T").dimen)
+    shelf(last, "T opens the shelf that holds A Tale of Two Cities")
+    screenshot("01-letter-shelf")
+    find()
+    tapBounds(button("E").dimen)
+    shelf(1, "E opens the shelf that holds Emma")
+
+    find()
+    tapBounds(button("Read lately").dimen)
+    assert(top().view.kind == "recent" and title() == "Read lately" and #top().item_table == 1
+        and top().item_table[1].text == "No books read yet", "Read lately says so before any book is read")
+    -- Reading history is a fixture here: three books last open today, yesterday, and twenty days ago.
+    local ReadHistory = require("readhistory")
+    local read = { { "Bleak House", 1, "Yesterday" }, { "Emma", 20, "2 weeks ago" }, { "Kidnapped", 0, "Today" } }
+    for _, book in ipairs(read) do
+        book.path = os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. book[1] .. ".txt"
+        assert(ReadHistory:addItem(book.path, os.time() - book[2] * 86400, true))
+    end
+    tapBounds(button("Find a book").dimen)
+    tapBounds(button("Read lately").dimen)
+    local lately = {}
+    for index, item in ipairs(top().item_table) do lately[index] = item.text .. " " .. item.mandatory end
+    assert(table.concat(lately, "|") == "Kidnapped Today|Bleak House Yesterday|Emma 2 weeks ago",
+        "Read lately lists the books in reading history, newest first")
+    screenshot("01-read-lately")
+    for _, book in ipairs(read) do ReadHistory:removeItemByPath(book.path) end
+
+    local function typeName(text)
+        tapBounds(button("Find a book").dimen)
+        local screen = top()
+        tapBounds(button("Type a name").dimen)
+        local dialog = assert(screen.name_dialog, "Type a name opens KOReader's text box")
+        assert(not button("T", screen) and not button("Read lately", screen) and screen.view.kind == "find",
+            "the letters and buttons are put away while a name is typed")
+        -- The text is set directly. The keyboard itself is KOReader's.
+        dialog:setInputText(text)
+        wait(0.2)
+        return dialog.button_table:getButtonById("find").dimen, dialog, screen
+    end
+    local find_button, name_dialog, find_screen = typeName("EVENING w")
+    screenshot("01-type-a-name")
+    tapBounds(name_dialog.button_table:getButtonById("close").dimen)
+    assert(top() == find_screen and not find_screen.name_dialog and button("T") and button("Type a name"),
+        "Cancel puts the text box away and brings the letters back")
+    tapBounds(button("Type a name").dimen)
+    find_screen.name_dialog:setInputText("EVENING w")
+    wait(0.2)
+    tapBounds(find_button)
+    assert(top().view.kind == "search" and title() == "Books with “EVENING w”" and #top().item_table == 1
+        and top().item_table[1].text == "An Evening Walk", "typed words find the book whatever their capitals")
+    screenshot("01-typed-name")
+    tapBounds(typeName("zebra"))
+    assert(#top().item_table == 1 and top().item_table[1].text == "No book or author has “zebra” in its name"
+        and not top().item_table[1].callback, "a name no book or author has says so")
+
+    -- The home screen has KOReader read each book's details in the background. Wait for the two authors.
+    local details = assert(package.loaded.bookinfomanager, "the home screen loads KOReader's book details")
+    for _ = 1, 40 do
+        local read_all = true
+        for _, path in ipairs(authored) do
+            read_all = read_all and details:getDocProps(path) ~= nil
+        end
+        if read_all then break end
+        wait(0.25)
+    end
+    local function named(text)
+        tapBounds(typeName(text))
+        local rows = {}
+        for index, item in ipairs(top().item_table) do
+            rows[index] = item.text .. " by " .. tostring(item.mandatory)
+        end
+        return table.concat(rows, "|")
+    end
+    assert(named("austen") == "Persuasion by Jane Austen", "an author's name finds their book")
+    assert(named("bronte") == "Jane Eyre by Charlotte Brontë", "an author is found without the accent")
+    assert(named("jane") == "Jane Eyre by Charlotte Brontë|Persuasion by Jane Austen",
+        "typed words match titles and authors together, in library order")
+    screenshot("01-typed-author")
+    assert(place(2).place == "shelf", "Book Shelf leaves Find")
+    shelf(1, "Book Shelf returns from Find to the first shelf")
+    print("PASS find: letters, Read lately, typed name or author, return to the shelf")
+
+    for _, extra in ipairs(extras) do assert(os.remove(extra)) end
+    UIManager:broadcastEvent(Event:new("NotCharging"))
+    wait(0.15)
+    assert(#top().item_table == 2 and top().page_num == 1 and not top().shelf_arrows
+        and top().title_bar.title_widget.text == "Books", "one shelf of two fixture books has a plain title and no arrows")
+
     tapBounds(top().layout[1][1][1].dimen)
     wait(3.2) -- Allow the fresh-profile book cache notice to clear.
     local reader = assert(ReaderUI.instance, "a touch on the shelf opens the book")

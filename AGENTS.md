@@ -5,6 +5,7 @@ GrandmaKOReader is a set of Lua user patches for KOReader on Kindle Oasis. Edit 
 ## Reader behavior
 
 - Launch into a single `books` folder at the root of Kindle storage. A tap on a title opens the book.
+- The home screen has three places along the bottom: Book Shop, Book Shelf, and Settings. Book Shop and Settings are placeholders. The shelf files titles in library order through `patches/library.lua`. With more than one shelf, the title names the open shelf’s letters, such as “Books B–L”, and an arrow on each side names its neighbour. Find a book offers a letter, Read lately, or a typed title or author.
 - While reading, the page buttons turn pages. Swiping inward from any edge opens the same reading menu. An ordinary tap leaves the page alone. The only persistent footer is the battery warning below 10%.
 - Open another book, in the reading menu, saves the current place. Put back on shelf, in the end-of-book dialog, marks the book read and resets it to the beginning. Removal requires confirmation, and Cancel returns to the end-of-book choices.
 - Keep the user’s chosen labels and copy when changing layouts. Check portrait and landscape when changing any reader surface.

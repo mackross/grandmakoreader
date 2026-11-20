@@ -44,6 +44,7 @@ return {
     start_with = "last",
     end_document_action = "nothing",
     end_document_auto_mark = true,
+    virtual_keyboard_enabled = true,
 }
 LUA
 
@@ -54,7 +55,7 @@ LUA
     fi
     (
         cd "$runtime"
-        perl -e 'alarm shift; exec @ARGV or die "Cannot start KOReader: $!\n";' 45 ./luajit reader.lua "$@"
+        perl -e 'alarm shift; exec @ARGV or die "Cannot start KOReader: $!\n";' 120 ./luajit reader.lua "$@"
     ) > "$log" 2>&1 || {
         tail -n 60 "$log" >&2
         exit 1
