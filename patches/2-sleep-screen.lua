@@ -1,10 +1,26 @@
 -- The Kindle shows the Grandma's Magic Pirate Book cover while it sleeps, always in portrait.
 -- The picture is the only image in the sleep-screen folder next to this patch, so it is the one shown.
 local Device = require("device")
+local FileManager = require("apps/filemanager/filemanager")
+local ReaderUI = require("apps/reader/readerui")
+local Screensaver = require("ui/screensaver")
 local ffiUtil = require("ffi/util")
+
+-- The sleep screen attaches to the reader or KOReader's file manager, and skips drawing without one.
+-- The home screen replaces the file manager, so stand one in while the sleep screen is set up there.
+-- An image sleep screen without a book needs nothing from it.
+local setup = Screensaver.setup
+function Screensaver:setup(...)
+    if ReaderUI.instance or FileManager.instance then return setup(self, ...) end
+    FileManager.instance = {}
+    local ok, err = pcall(setup, self, ...)
+    FileManager.instance = nil
+    if not ok then error(err, 0) end
+end
 
 local patch_dir = debug.getinfo(1, "S").source:match("^@(.*/)")
 G_reader_settings:saveSetting("screensaver_type", "random_image")
+G_reader_settings:makeFalse("screensaver_show_message")
 G_reader_settings:saveSetting("screensaver_dir", ffiUtil.realpath(patch_dir .. "sleep-screen") or patch_dir .. "sleep-screen")
 
 -- KOReader keeps the Kindle framework running, so the Kindle's own sleep screen, with or without

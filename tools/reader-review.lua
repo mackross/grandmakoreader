@@ -173,6 +173,14 @@ local function check()
     local home = top()
     assert(home.name == "books_home" and #home.item_table == 2, "startup opens the fixed Books folder")
     screenshot("01-books")
+    UIManager:suspend()
+    wait(0.2)
+    assert(Device.screen_saver_mode and require("ui/screensaver").image_file:find("/grandmas%-magic%-pirate%-book%.png$"),
+        "sleeping from the shelf shows Grandma's Magic Pirate Book")
+    screenshot("01-books-asleep")
+    UIManager.event_handlers.Resume()
+    wait(0.4)
+    assert(not Device.screen_saver_mode and top().name == "books_home", "waking returns to the shelf")
     if not landscape then checkWifi() end
 
     local added = os.getenv("XDG_DOCUMENTS_DIR") .. "/Recently added.txt"

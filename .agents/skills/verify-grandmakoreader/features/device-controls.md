@@ -18,6 +18,7 @@ The reading menu adjusts the frontlight and lets the reader put the Kindle to sl
 Preconditions: the doctor passes. The simulator starts with the frontlight off.
 
 - Run `tools/review-koreader "$evidence"`. Inspect `05-light-controls.png` for **Darker** and **Brighter** above **Turn off** and **Done**, and `05-adjust-light-menu.png` for **Adjust light**. The test sets the simulated hardware one step from each limit, then taps the relevant control to reach the limit and verifies a second tap in that position leaves brightness and the panel unchanged.
+- Inspect `01-books-asleep.png` for the same picture when the Kindle sleeps from the shelf, where no reader is open.
 - Inspect `07-stop-for-now.png` for the Grandma's Magic Pirate Book sleep screen. The run checks that the screensaver becomes active with that picture and that the reader resumes. The simulator's landscape window is natively landscape, so it letterboxes the portrait picture; on the Oasis, KOReader turns the screen to portrait first.
 
 ## Gotchas
