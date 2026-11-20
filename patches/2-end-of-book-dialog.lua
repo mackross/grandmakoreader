@@ -1,9 +1,14 @@
+local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
+local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
 local FileManager = require("apps/filemanager/filemanager")
 local Font = require("ui/font")
+local FrameContainer = require("ui/widget/container/framecontainer")
+local InputContainer = require("ui/widget/container/inputcontainer")
 local QuickStart = require("ui/quickstart")
 local ReaderStatus = require("apps/reader/modules/readerstatus")
+local TextBoxWidget = require("ui/widget/textboxwidget")
 local UIManager = require("ui/uimanager")
 
 local onEndOfBook = ReaderStatus.onEndOfBook
@@ -68,7 +73,7 @@ local function confirmThrowAway(reader, dialog, return_to_menu)
     UIManager:show(confirmation)
 end
 
-local function showEndOfBookDialog(self, offset)
+local function showEndOfBookDialog(self, offset, after_tap)
     local screen = Device.screen
     local screen_width, screen_height = screen:getWidth(), screen:getHeight()
     local landscape = screen_width > screen_height
@@ -144,9 +149,16 @@ local function showEndOfBookDialog(self, offset)
         width_factor = 0.94,
         buttons = buttons,
     }
+    -- A tap that turned Andrew's page often comes with a second, impatient one; let it fall on nothing.
+    local settling = after_tap
+    if settling then
+        UIManager:scheduleIn(0.5, function() settling = false end)
+    end
     -- Page back dismisses the choices like "Go back to last page"; page forward does nothing.
     function dialog:handleEvent(event)
-        if event.handler == "onKeyPress" then
+        if settling and event.handler == "onGesture" then
+            return true
+        elseif event.handler == "onKeyPress" then
             local key = event.args[1].key
             if key == "LPgBack" or key == "RPgBack" then
                 UIManager:close(self)
@@ -161,17 +173,78 @@ local function showEndOfBookDialog(self, offset)
     UIManager:show(dialog)
 end
 
+-- Every book ends with a page from Andrew. Turning forward from it, by button, swipe, or tap,
+-- offers the end-of-book choices; turning back returns to the book's own last page.
+local function showLoveNote(self)
+    local size = Device.screen:getSize()
+    local note = InputContainer:new{
+        name = "love_note",
+        covers_fullscreen = true,
+        dimen = size,
+        FrameContainer:new{
+            width = size.w,
+            height = size.h,
+            padding = 0,
+            bordersize = 0,
+            background = Blitbuffer.COLOR_WHITE,
+            CenterContainer:new{
+                dimen = size,
+                TextBoxWidget:new{
+                    text = "Dear Grandma,\n\nI hope you enjoyed\nthis book.\n\nWith love,\nAndrew ♥",
+                    face = Font:getFace("NotoSerif-Italic.ttf", 40),
+                    width = math.floor(size.w * 0.8),
+                    alignment = "center",
+                },
+            },
+        },
+    }
+    local function turn(forward, by_tap)
+        UIManager:close(note, "full")
+        if forward then
+            showEndOfBookDialog(self, nil, by_tap)
+        end
+        return true
+    end
+    function note:handleEvent(event)
+        if event.handler == "onKeyPress" then
+            local key = event.args[1].key
+            if key == "LPgFwd" or key == "RPgFwd" then
+                return turn(true)
+            elseif key == "LPgBack" or key == "RPgBack" then
+                return turn(false)
+            end
+            return true
+        elseif event.handler == "onGesture" then
+            local gesture = event.args[1]
+            if gesture.ges == "tap" then
+                return turn(true, true)
+            elseif gesture.ges == "swipe" and gesture.direction == "west" then
+                return turn(true)
+            elseif gesture.ges == "swipe" and gesture.direction == "east" then
+                return turn(false)
+            end
+            return true
+        end
+        return InputContainer.handleEvent(self, event)
+    end
+    UIManager:show(note, "full")
+end
+
 function ReaderStatus:onEndOfBook()
     if self.document.file == QuickStart.quickstart_filename then
         return onEndOfBook(self)
     end
+    -- Find a place stays open while pages turn; put it away so the note is not drawn under it.
+    if self.ui.reading_controls then
+        self.ui.reading_controls:onClose()
+    end
 
     local top_widget = UIManager:getTopmostVisibleWidget()
-    if top_widget and top_widget.name == "end_document" then
+    if top_widget and (top_widget.name == "end_document" or top_widget.name == "love_note") then
         return true
     end
 
     Device:performHapticFeedback("CONTEXT_CLICK")
-    showEndOfBookDialog(self)
+    showLoveNote(self)
     return true
 end
