@@ -302,7 +302,7 @@ local function check()
     -- Fourteen more titles make more than one shelf. Library order ignores a leading "The", "A", or "An".
     local library_order = {
         "Bleak House", "Cranford", "Dracula", "Emma", "An Evening Walk", "Frankenstein", "The Go-Between",
-        "Great Expectations", "Jamaica Inn", "Jane Eyre", "Kidnapped", "Mansfield Park", "Martin Chuzzlewit",
+        "Great Expectations", "Guy Mannering", "Jane Eyre", "Jude the Obscure", "Kidnapped", "Mansfield Park",
         "Oasis Sample", "Persuasion", "A Tale of Two Cities",
     }
     -- Two of them are FictionBook files, which name their author inside the file.
@@ -333,11 +333,11 @@ local function check()
     local shelved = {}
     for index, item in ipairs(top().item_table) do shelved[index] = item.text end
     assert(table.concat(shelved, "|") == table.concat(library_order, "|"), "the books stand in library order")
-    -- A shelf holds nine books in portrait and six in landscape, so J or M runs onto a second shelf.
+    -- A shelf holds eight books in portrait and five in landscape, so G or J runs onto a second shelf.
     -- An end of a shelf's letters takes as many letters as it needs to differ from its neighbour.
     local shelf_size = #top().page_items[1]
-    local shelf_letters = ({ [9] = { "B–Jam", "Jan–T" }, [6] = { "B–F", "G–Man", "Mar–T" } })[shelf_size]
-    assert(shelf_letters, "a shelf holds nine books in portrait or six in landscape")
+    local shelf_letters = ({ [8] = { "B–Gr", "Gu–T" }, [5] = { "B–E", "F–Ja", "Ju–P", "T" } })[shelf_size]
+    assert(shelf_letters, "a shelf holds eight books in portrait or five in landscape")
     local last = top().page_num
     assert(last == #shelf_letters, "sixteen books fill the expected number of shelves")
     local function shelf(page, message)
@@ -345,8 +345,9 @@ local function check()
         for _, arrow in ipairs(top().shelf_arrows) do
             if arrow.points_left then previous = arrow.text else next_shelf = arrow.text end
         end
-        assert(not top().view and top().page == page and top().page_num == last and button("Find a book")
-            and top().title_bar.title_widget.text == "Books " .. shelf_letters[page]
+        assert(not top().view and top().page == page and top().page_num == last and button("Look up a book")
+            -- Portrait leaves the word out of the title to make room for the arrows.
+            and top().title_bar.title_widget.text == (landscape and "Books " or "") .. shelf_letters[page]
             and previous == shelf_letters[page - 1] and next_shelf == shelf_letters[page + 1], message)
     end
     shelf(1, "the first shelf is titled by its letters and points right to the second")
@@ -376,8 +377,8 @@ local function check()
 
     local function title() return top().title_bar.title_widget.text end
     local function find()
-        tapBounds(button("Find a book").dimen)
-        assert(top().view and top().view.kind == "find" and title() == "Find a book", "Find a book opens the Find screen")
+        tapBounds(button("Look up a book").dimen)
+        assert(top().view and top().view.kind == "find" and title() == "Look up a book", "Look up a book opens the Find screen")
     end
     find()
     screenshot("01-find")
@@ -392,7 +393,7 @@ local function check()
     tapBounds(button("E").dimen)
     shelf(1, "E opens the shelf that holds Emma")
     find()
-    local continued, first_shelf = shelf_size == 9 and "J" or "M", shelf_size == 9 and 1 or 2
+    local continued, first_shelf = landscape and "J" or "G", landscape and 2 or 1
     tapBounds(button(continued).dimen)
     shelf(first_shelf, continued .. " opens its first shelf, whose right arrow shows the letter going on")
     assert(top().next_shelf.text:sub(1, 1) == continued, "the right arrow starts with the same letter")
@@ -408,7 +409,7 @@ local function check()
         book.path = os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. book[1] .. ".txt"
         assert(ReadHistory:addItem(book.path, os.time() - book[2] * 86400, true))
     end
-    tapBounds(button("Find a book").dimen)
+    tapBounds(button("Look up a book").dimen)
     tapBounds(button("Read lately").dimen)
     local lately = {}
     for index, item in ipairs(top().item_table) do lately[index] = item.text .. " " .. item.mandatory end
@@ -418,7 +419,7 @@ local function check()
     for _, book in ipairs(read) do ReadHistory:removeItemByPath(book.path) end
 
     local function typeName(text)
-        tapBounds(button("Find a book").dimen)
+        tapBounds(button("Look up a book").dimen)
         local screen = top()
         tapBounds(button("Type a name").dimen)
         local dialog = assert(screen.name_dialog, "Type a name opens KOReader's text box")

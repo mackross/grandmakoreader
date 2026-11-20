@@ -39,7 +39,7 @@ For a full reading-flow check and screenshots at the 7-inch Oasis resolution, ru
 tools/review-koreader .koreader/screenshots
 ```
 
-The review creates disposable portrait and landscape libraries and sends touch and page-turn events through SDL. It checks the bookshelf, its lettered shelves and Find a book, the battery threshold, reading controls, and all four end-of-book choices, then saves PNGs and a `run.log` per orientation. The fixture profiles are cleaned up at the end of the run. Amp and Codex can use the [verify-grandmakoreader skill](.agents/skills/verify-grandmakoreader/SKILL.md) and its feature map to inspect the evidence.
+The review creates disposable portrait and landscape libraries and sends touch and page-turn events through SDL. It checks the bookshelf, its lettered shelves and Look up a book, the battery threshold, reading controls, and all four end-of-book choices, then saves PNGs and a `run.log` per orientation. The fixture profiles are cleaned up at the end of the run. Amp and Codex can use the [verify-grandmakoreader skill](.agents/skills/verify-grandmakoreader/SKILL.md) and its feature map to inspect the evidence.
 
 ## Update the Kindle over Wi-Fi
 

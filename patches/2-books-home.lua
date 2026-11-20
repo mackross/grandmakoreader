@@ -75,7 +75,7 @@ function PlaceButton:init()
                     VerticalSpan:new{ width = Screen:scaleBySize(2) },
                     TextWidget:new{
                         text = place.text,
-                        face = Font:getFace(place.prominent and "smalltfont" or "cfont", place.prominent and 28 or 24),
+                        face = Font:getFace(place.prominent and "smalltfont" or "cfont", place.prominent and 32 or 28),
                         fgcolor = self.current and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK,
                     },
                 },
@@ -129,9 +129,9 @@ end
 local ShelfArrow = InputContainer:extend{}
 
 function ShelfArrow:init()
-    local height = Screen:scaleBySize(44)
+    local height = Screen:scaleBySize(52)
     local padding = Screen:scaleBySize(14)
-    self.label = TextWidget:new{ text = self.text, face = Font:getFace("cfont", 30) }
+    self.label = TextWidget:new{ text = self.text, face = Font:getFace("cfont", 36) }
     self.point = math.floor(height / 2)
     self.dimen = Geom:new{ w = self.point + self.label:getSize().w + 2 * padding, h = height }
     self.hit_area = self.dimen:copy()
@@ -179,15 +179,17 @@ function ShelfArrow:free()
 end
 
 local button_margin = Screen:scaleBySize(8)
+-- The button across the bottom of the shelf is set as large as the titles above it.
+local lookup_font_size = 40
 
 -- An outlined button with a word or a letter on it. Without a callback it is greyed out.
 local function wordButton(button)
     local border = Size.border.thick
     button.enabled = button.callback ~= nil
     button.height = button.height and button.height - 2 * (border + button_margin)
-    button.padding_v = button.height and 0 or Screen:scaleBySize(8)
+    button.padding_v = button.height and 0 or button.padding_v or Screen:scaleBySize(4)
     button.padding_h = Screen:scaleBySize(18)
-    button.text_font_size = button.text_font_size or 30
+    button.text_font_size = button.text_font_size or 36
     button.text_font_bold = false
     button.bordersize = border
     button.radius = Screen:scaleBySize(10)
@@ -205,7 +207,7 @@ local Home = Menu:extend{
     is_borderless = true,
     is_popout = false,
     items_per_page = 8,
-    items_font_size = 34,
+    items_font_size = 40,
     items_max_lines = 2,
     is_enable_shortcut = false,
 }
@@ -215,7 +217,7 @@ function Home:init()
     local bar = buildPlaceBar(not self.view and self.place, Screen:getWidth())
     self.height = Screen:getHeight() - bar:getSize().h
     -- Menu sizes the strip below the list from its page label, so make that label as tall as Find.
-    self.page_info_text = wordButton{ show_parent = self, text = "" }
+    self.page_info_text = wordButton{ show_parent = self, text = "", text_font_size = lookup_font_size, padding_v = 0 }
     Menu.init(self)
     -- The list stays above the bar. The screen as a whole belongs to Home.
     self.dimen.h = Screen:getHeight()
@@ -306,12 +308,19 @@ function Home:shelfLetters(page)
     return first == last and first or first .. "–" .. last
 end
 
+-- The title of a shelf with neighbours. Portrait has no room for the word beside the arrows, so the
+-- letters stand alone there, as in "K–P" against "Books K–P" in landscape.
+function Home:shelfTitle(page)
+    local letters = self:shelfLetters(page)
+    return Screen:getWidth() < Screen:getHeight() and letters or self.title .. " " .. letters
+end
+
 -- Whether every shelf's title fits between the arrows to its neighbours.
 function Home:shelfLabelsFit()
     local bar = self.title_bar
     for page = 1, self.page_num do
         local title = TextWidget:new{
-            text = self.view and self.title or self.title .. " " .. self:shelfLetters(page),
+            text = self.view and self.title or self:shelfTitle(page),
             face = bar.title_face,
         }
         local room = (bar.width - title:getSize().w) / 2 - Size.padding.fullscreen - Screen:scaleBySize(8)
@@ -336,14 +345,17 @@ function Home:updatePageInfo(...)
     end
     page_controls:resetLayout()
     if self.has_find then
-        -- Find sits at the bottom right, with its outline on the line of the rules under the titles.
+        -- The button spans the bottom of the list, with its outline as wide as the rules under the titles.
+        local inset = Size.padding.fullscreen - button_margin
         self.find_button = self.find_button or wordButton{
             show_parent = self,
-            text = "Find a book",
+            text = "Look up a book",
+            text_font_size = lookup_font_size,
+            padding_v = 0,
+            width = self.inner_dimen.w - 2 * inset,
             callback = function() showHome("shelf", nil, { kind = "find" }) end,
         }
-        local inset = Size.padding.fullscreen - button_margin
-        page_controls[1] = HorizontalSpan:new{ width = self.inner_dimen.w - inset - self.find_button:getSize().w }
+        page_controls[1] = HorizontalSpan:new{ width = inset }
         page_controls[2] = self.find_button
         page_controls[3] = HorizontalSpan:new{ width = inset }
     end
@@ -360,7 +372,7 @@ function Home:updatePageInfo(...)
     -- title names the open one.
     local bar = self.title_bar
     if not self.view then
-        bar:setTitle(self.title .. " " .. self:shelfLetters(self.page), true)
+        bar:setTitle(self:shelfTitle(self.page), true)
     end
     if not self.shelf_arrows then
         self.shelf_arrows = OverlapGroup:new{ dimen = Geom:new{ w = bar.width, h = bar:getHeight() } }
@@ -402,7 +414,7 @@ function Home:buildFind()
     local gap = Screen:scaleBySize(10)
     local inset = Size.padding.fullscreen - button_margin
     local width = self.inner_dimen.w - 2 * inset
-    local prompt = TextWidget:new{ text = "Which letter does it start with?", face = Font:getFace("cfont", 30) }
+    local prompt = TextWidget:new{ text = "Which letter does it start with?", face = Font:getFace("cfont", 36) }
     local key_height = math.min(Screen:scaleBySize(84),
         math.floor((self.available_height - prompt:getSize().h - 3 * gap) / rows))
 
@@ -422,7 +434,7 @@ function Home:buildFind()
         row[#row + 1] = wordButton{
             show_parent = self,
             text = key,
-            text_font_size = 30,
+            text_font_size = 36,
             width = math.floor(width / columns),
             height = key_height,
             -- A letter opens the shelf that holds the first book filed under it.
@@ -591,13 +603,13 @@ end
 local function confirmExit()
     local dialog
     local function choice(text, callback)
-        return { text = text, font_size = 30, callback = callback }
+        return { text = text, font_size = 36, callback = callback }
     end
     dialog = ButtonDialog:new{
         modal = true,
         title = "Leave the books and go to the Kindle’s own home screen?",
         title_align = "center",
-        title_face = Font:getFace("infofont", 26),
+        title_face = Font:getFace("infofont", 32),
         buttons = { {
             choice("Cancel", function() UIManager:close(dialog) end),
             choice("Exit to Kindle", function()
@@ -682,7 +694,7 @@ function showHome(place_id, focused_file, view)
     end
     local finding = view and view.kind == "find"
     if view then
-        title = finding and "Find a book" or view.kind == "recent" and "Read lately"
+        title = finding and "Look up a book" or view.kind == "recent" and "Read lately"
             or view.kind == "advanced" and "Advanced" or "Books with “" .. view.text .. "”"
     end
     local books = place_id == "shelf" and allBooks() or nil
@@ -700,7 +712,7 @@ function showHome(place_id, focused_file, view)
         custom_title_bar = TitleBar:new{
             width = Device.screen:getWidth(),
             title = title,
-            title_face = Font:getFace("smalltfont", 32),
+            title_face = Font:getFace("smalltfont", 40),
             title_top_padding = Screen:scaleBySize(8),
             with_bottom_line = true,
         },

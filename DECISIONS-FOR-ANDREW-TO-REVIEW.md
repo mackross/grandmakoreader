@@ -52,9 +52,9 @@ Titles follow the ALA Filing Rules in `patches/library.lua`: a leading The, A, o
 
 Each end of a shelf’s letters takes as many letters as it needs to differ from the neighbouring shelf, as on encyclopedia volumes such as “S–Sn” and “So–Sz”. A library with many S titles reads “C–Sea”, “Sec–St”, and “Sw–W” in portrait, so the title and both arrows stay distinct, and a letter that goes on past the shelf Find opens shows on that shelf’s right arrow. An end stops at three letters, or at fewer on every shelf when the widest labels would not fit beside the title. Two titles that agree in their first three letters on either side of a shelf break, such as The Secret Adversary and The Secret Agent, give both shelves the same end, such as “Ro–Sec” beside “Sec–So”. Shelves keep a fixed number of books rather than breaking at letters, so none is left part-empty.
 
-## Find a book by letter, by Read lately, or by typing, with no sort switch
+## Look up a book by letter, by Read lately, or by typing, with no sort switch
 
-Find a book sits at the bottom right and appears only with more than one shelf. Its strip takes room from the list. The shelf stays in title order; Read lately takes the place of a sort switch. One typed search matches titles and authors together. KOReader’s own file search was left out for its filename wording and extra controls, while its keyboard, input dialog, and reading history are reused.
+The button reads “Look up a book”, Andrew’s wording, spelled as two words. He found “Find a book” confusing, because it could mean finding one in the Book Shop; looking a book up is what she would do in a library’s catalogue. “Find a shelf” was tried and dropped, because Read lately and a typed name lead to books. It spans the bottom of the list in the titles’ type size, as Andrew asked, and appears only with more than one shelf. Its strip takes room from the list. The shelf stays in title order; Read lately takes the place of a sort switch. One typed search matches titles and authors together. KOReader’s own file search was left out for its filename wording and extra controls, while its keyboard, input dialog, and reading history are reused.
 
 ## Read authors through KOReader’s cover browser plugin
 
@@ -66,7 +66,11 @@ Andrew asked for Advanced (Exit to Kindle) in Settings. Settings shows one row, 
 
 ## Use larger type on the home screen, with fewer books on a shelf
 
-Andrew found the home screen crowded and its type too small. Titles went from size 26 to 34, which leaves 9 books a shelf in portrait and 6 in landscape where there were 12 and 7. The arrows, Find a book, the Find screen’s question and buttons, and the labels on the bottom bar grew with them. A library therefore runs to more shelves, and Read lately shows fewer books on its one screen.
+Andrew found the home screen crowded and its type too small, and pointed to the reading menu’s type as the size to aim for. Titles went from size 26 to 40, the reading menu’s size, which leaves 8 books a shelf in portrait and 5 in landscape where there were 12 and 7. The arrows, the title, Look up a book, the Find screen’s question and buttons, the Exit to Kindle question, and the labels on the bottom bar grew with them. A library therefore runs to more shelves, and Read lately shows fewer books on its one screen. Titles stay in regular weight, because bold marks the book a letter or a return leads to.
+
+## Leave Books out of the shelf title in portrait
+
+Andrew asked for this to make room for the larger arrows. In portrait a shelf with neighbours is titled by its letters alone, such as “J–O”. Landscape keeps “Books J–O”, and a single shelf is still titled “Books” in both.
 
 ## Find a place by halving the book with Before and After
 
