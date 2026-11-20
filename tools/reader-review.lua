@@ -203,6 +203,7 @@ local function check()
         return top()
     end
     assert(place(1).place == "shop" and top().title == "Book Shop", "the left button opens the Book Shop")
+    assert(button("Find a new book"), "the Book Shop offers Find a new book where the shelf looks books up")
     screenshot("01-book-shop")
     assert(place(3).place == "settings" and top().title == "Settings", "the right button opens Settings")
     -- The rows on show from top to bottom, and the row with this text.

@@ -40,6 +40,37 @@ local books_dir = Device:isKindle() and Device.home_dir .. "/books"
     or os.getenv("XDG_DOCUMENTS_DIR") or Device.home_dir .. "/books"
 local Screen = Device.screen
 local icons_dir = patch_dir .. "icons/"
+
+-- The shop's Find a new book opens the Z-library plugin. The patch replaces FileManager:showFiles,
+-- so no FileManager exists to load the plugin's widget into; load it here instead, the way
+-- KOReader would, and keep the one instance for later taps. In the simulator the plugin is
+-- vendored under plugins/; on the Kindle it sits in the koreader folder.
+local zlibrary_instance
+local function openZlibrary()
+    -- Z-library wants the radio; the need expires if the search outlives its welcome.
+    local ok, Wifi = pcall(require, "grandma/wifi")
+    if ok and Wifi then Wifi:need("zlibrary", 600) end
+    if not zlibrary_instance then
+        local dir
+        for _, candidate in ipairs{
+            patch_dir .. "../plugins/zlibrary.koplugin/",
+            (lfs.currentdir() or "") .. "/plugins/zlibrary.koplugin/",
+            "/mnt/us/koreader/plugins/zlibrary.koplugin/",
+        } do
+            if lfs.attributes(candidate .. "_meta.lua", "mode") == "file" then
+                dir = candidate
+                break
+            end
+        end
+        if not dir then
+            logger.err("Find a new book: no zlibrary.koplugin folder found")
+            return
+        end
+        package.path = dir .. "?.lua;" .. package.path
+        zlibrary_instance = dofile(dir .. "main.lua"):new{}
+    end
+    zlibrary_instance:onZlibrarySearch()
+end
 local places = {
     { id = "shop", title = "Book Shop", text = "Book Shop", file = icons_dir .. "shop.svg" },
     { id = "shelf", title = "Books", text = "Book Shelf", file = icons_dir .. "bookshelf.svg", prominent = true },
@@ -344,9 +375,23 @@ function Home:updatePageInfo(...)
         page_controls[index] = nil
     end
     page_controls:resetLayout()
-    if self.has_find then
+    local inset = Size.padding.fullscreen - button_margin
+    if self.place == "shop" then
+        -- The shop has no rows of its own yet. In the place where the shelf looks books up, it
+        -- offers a new one through Z-library.
+        self.new_book_button = self.new_book_button or wordButton{
+            show_parent = self,
+            text = "Find a new book",
+            text_font_size = lookup_font_size,
+            padding_v = 0,
+            width = self.inner_dimen.w - 2 * inset,
+            callback = openZlibrary,
+        }
+        page_controls[1] = HorizontalSpan:new{ width = inset }
+        page_controls[2] = self.new_book_button
+        page_controls[3] = HorizontalSpan:new{ width = inset }
+    elseif self.has_find then
         -- The button spans the bottom of the list, with its outline as wide as the rules under the titles.
-        local inset = Size.padding.fullscreen - button_margin
         self.find_button = self.find_button or wordButton{
             show_parent = self,
             text = "Look up a book",
@@ -719,9 +764,9 @@ function showHome(place_id, focused_file, view)
         books = books,
         -- What Settings says about a check may take more lines than a title on the shelf is given.
         items_max_lines = place_id == "settings" and 4 or nil,
-        -- The shop is a placeholder until its contents are decided.
+        -- The shop holds no rows of its own yet; its Find a new book button opens Z-library.
         item_table = place_id == "settings" and settingsItems(view)
-            or not books and { { text = "Coming soon", select_enabled = false } }
+            or not books and {}
             or finding and {} or shelfItems(books, view, focused_file),
     }
     UIManager:show(home, "full")
