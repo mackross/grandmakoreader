@@ -18,6 +18,7 @@ local InputDialog = require("ui/widget/inputdialog")
 local LineWidget = require("ui/widget/linewidget")
 local Menu = require("ui/widget/menu")
 local OverlapGroup = require("ui/widget/overlapgroup")
+local QRWidget = require("ui/widget/qrwidget")
 local QuickStart = require("ui/quickstart")
 local ReadHistory = require("readhistory")
 local ReaderUI = require("apps/reader/readerui")
@@ -37,6 +38,7 @@ local util = require("util")
 local patch_dir = debug.getinfo(1, "S").source:match("^@(.*/)")
 local Details = dofile(patch_dir .. "details.lua")
 local Library = dofile(patch_dir .. "library.lua")
+local Report = dofile(patch_dir .. "report.lua")
 local books_dir = Device:isKindle() and Device.home_dir .. "/books"
     or os.getenv("XDG_DOCUMENTS_DIR") or Device.home_dir .. "/books"
 local Screen = Device.screen
@@ -572,6 +574,53 @@ function Home:updateItems(...)
         self.item_group[1] = self:buildFind()
         self.item_group:resetLayout()
     end
+    if self.view and self.view.kind == "report" then
+        self.item_group[1] = self:buildReport()
+        self.item_group:resetLayout()
+    end
+end
+
+-- The Report a problem screen: a QR code that a phone's camera reads as an email to Andrew, already
+-- written by report.lua. The phone sends it, so the Kindle needs no Wi-Fi.
+function Home:buildReport()
+    -- Written once for each showing, so redrawing the screen does not read the log again.
+    self.report_url = self.report_url or Report.url()
+    local gap = Screen:scaleBySize(10)
+    local padding = Size.padding.fullscreen
+    local landscape = Screen:getWidth() > Screen:getHeight()
+    -- The code takes the room there is, so its squares are as large as the screen allows: the whole
+    -- height in landscape with the words beside it, and the whole width in portrait with them above.
+    local size = landscape and self.available_height - 2 * gap or self.inner_dimen.w - 2 * padding
+    local prompt = TextBoxWidget:new{
+        text = "Point a phone’s camera at this square, then send the email it writes.",
+        face = Font:getFace("cfont", 36),
+        width = landscape and self.inner_dimen.w - size - 3 * padding or size,
+    }
+    if not landscape then
+        size = math.min(size, self.available_height - prompt:getSize().h - 3 * gap)
+    end
+    -- At scale 1 the squares keep a whole number of pixels each, which a camera reads best.
+    local code = QRWidget:new{ text = self.report_url, width = size, height = size, scale_factor = 1 }
+    if landscape then
+        return VerticalGroup:new{
+            align = "left",
+            VerticalSpan:new{ width = gap },
+            HorizontalGroup:new{
+                align = "top",
+                HorizontalSpan:new{ width = padding },
+                prompt,
+                HorizontalSpan:new{ width = padding },
+                CenterContainer:new{ dimen = Geom:new{ w = size, h = size }, code },
+            },
+        }
+    end
+    return VerticalGroup:new{
+        align = "left",
+        VerticalSpan:new{ width = gap },
+        HorizontalGroup:new{ HorizontalSpan:new{ width = padding }, prompt },
+        VerticalSpan:new{ width = gap },
+        CenterContainer:new{ dimen = Geom:new{ w = self.inner_dimen.w, h = size }, code },
+    }
 end
 
 -- KOReader's own text box and keyboard, asking for part of a book's name or its author's.
@@ -758,10 +807,14 @@ local function updateReported(state, reason)
     end
 end
 
--- The rows of Settings, or of Advanced within it.
+-- The rows of Settings, or of Advanced within it. The Report a problem screen has none.
 function settingsItems(view)
+    if view and view.kind == "report" then return {} end
     if view then
-        return { { text = "Exit to Kindle", callback = confirmExit } }
+        return {
+            { text = "Report a problem", callback = function() showHome("settings", nil, { kind = "report" }) end },
+            { text = "Exit to Kindle", callback = confirmExit },
+        }
     end
     -- The updater provides this once every patch has loaded, and only when updates are switched on.
     local Update = package.loaded["grandma/update"]
@@ -789,7 +842,8 @@ end
 
 -- Shows a place. On the shelf, view is nil for every book, or { kind = "find" } for the Find screen,
 -- { kind = "recent" } for Read lately, or { kind = "search", text = ... } for books with that name
--- or author. In Settings, { kind = "advanced" } is the Advanced screen.
+-- or author. In Settings, { kind = "advanced" } is the Advanced screen and { kind = "report" } is
+-- Report a problem, which Advanced leads to.
 function showHome(place_id, focused_file, view)
     -- How the last check ended is news only until Settings is left.
     local stays_in_settings = home and home.place == "settings" and place_id == "settings"
@@ -807,7 +861,8 @@ function showHome(place_id, focused_file, view)
     local finding = view and view.kind == "find"
     if view then
         title = finding and "Look up a book" or view.kind == "recent" and "Read lately"
-            or view.kind == "advanced" and "Advanced" or "Books with “" .. view.text .. "”"
+            or view.kind == "advanced" and "Advanced" or view.kind == "report" and "Report a problem"
+            or "Books with “" .. view.text .. "”"
     end
     local books = place_id == "shelf" and allBooks() or nil
     if books then

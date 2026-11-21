@@ -292,7 +292,7 @@ local function check()
         tapBounds(row("Advanced").dimen)
         assert(top().place == "settings" and top().view.kind == "advanced" and top().title == "Advanced",
             "Advanced opens from Settings")
-        assert(rows() == "Exit to Kindle", "Advanced offers only Exit to Kindle")
+        assert(rows() == "Report a problem|Exit to Kindle", "Advanced offers Report a problem and Exit to Kindle")
     end
     local function askToExit()
         tapBounds(row("Exit to Kindle").dimen)
@@ -300,6 +300,47 @@ local function check()
     end
     advanced()
     screenshot("01-advanced")
+
+    -- Report a problem shows the end of KOReader's log as a QR code holding an email to Andrew.
+    local crash_log = os.getenv("KO_HOME") .. "/crash.log"
+    local log = assert(io.open(crash_log, "w"))
+    log:write("11/20/26-10:39:02 WARN  a warning before the crash \n",
+        "./luajit: /mnt/us/koreader/patches/2-books-home.lua:412: attempt to index field 'view' (a nil value)\n",
+        "stack traceback:\n\t[C]: in function 'error'\n\treader.lua:301: in main chunk\n",
+        "11/20/26-10:41:00 INFO  Auto-update: up to date \n")
+    for index = 1, 400 do
+        log:write(string.format("11/20/26-10:42:00 WARN  a later warning, number %d \n", index))
+    end
+    log:close()
+    local function reportCode(widget)
+        widget = widget or top()
+        if type(widget.text) == "string" and widget.text:find("^mailto:") and widget.image then return widget end
+        for _, child in ipairs(widget) do
+            local found = type(child) == "table" and reportCode(child)
+            if found then return found end
+        end
+    end
+    tapBounds(row("Report a problem").dimen)
+    assert(top().place == "settings" and top().view.kind == "report" and top().title == "Report a problem",
+        "Report a problem opens from Advanced")
+    local code = assert(reportCode(), "Report a problem shows a QR code")
+    local written = code.text:gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end)
+    assert(code.text:find("^mailto:andrew@mackross%.net%?subject=Kindle%%20report&body=") and #code.text <= 1500,
+        "the code holds an email to Andrew that is short enough to scan")
+    assert(written:find("Last crash, after 11/20/26-10:39:02:\r\n./luajit: /mnt/us/koreader/patches/2-books-home.lua:412:", 1, true)
+        and written:find("  reader.lua:301: in main chunk", 1, true), "the email holds the last crash")
+    assert(written:find("a later warning, number 400 ", 1, true) and not written:find("number 1 ", 1, true),
+        "the email holds the newest warnings that fit")
+    local code_size = code:getSize()
+    assert(code_size.w == code_size.h and code_size.w >= 700 and code_size.w <= math.min(width, height),
+        "the code is square, large, and within the screen")
+    screenshot("01-report-a-problem")
+    refresh()
+    assert(top().view.kind == "report" and reportCode().text:find("number%20400", 1, true), "a refresh keeps the report on show")
+    assert(os.remove(crash_log))
+    assert(place(3).place == "settings" and not top().view, "the Settings button returns from Report a problem")
+    advanced()
+
     askToExit()
     screenshot("01-exit-to-kindle")
     tapBounds(button("Cancel").dimen)
