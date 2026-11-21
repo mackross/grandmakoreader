@@ -623,19 +623,36 @@ function Home:buildReport()
     }
 end
 
--- KOReader's own text box and keyboard, asking for part of a book's name or its author's.
+-- KOReader's own text box and keyboard, asking for part of a book's name or its author's, in type
+-- as large as the shelf's. The keyboard takes the largest key size KOReader offers.
+if G_reader_settings:hasNot("keyboard_key_font_size") then
+    G_reader_settings:saveSetting("keyboard_key_font_size", 30)
+end
+local NameDialog = InputDialog:extend{ input_face = Font:getFace("infofont", 40) }
+
+-- InputDialog gives its title bar no face of its own, so lend it one while the dialog is built.
+-- It also spans most of the page, in either orientation.
+function NameDialog:init()
+    self.width = math.floor(Screen:getWidth() * 0.95)
+    local face = TitleBar.title_face_not_fullscreen
+    TitleBar.title_face_not_fullscreen = Font:getFace("smalltfont", 36)
+    InputDialog.init(self)
+    TitleBar.title_face_not_fullscreen = face
+end
+
 function Home:typeName()
     local dialog
     local function close()
         UIManager:close(dialog)
         self.name_dialog = nil
     end
-    dialog = InputDialog:new{
+    dialog = NameDialog:new{
         title = "Type a book’s name or its author",
         buttons = { {
             {
                 text = "Cancel",
                 id = "close",
+                font_size = 36,
                 callback = function()
                     close()
                     -- Bring the letters back.
@@ -645,6 +662,7 @@ function Home:typeName()
             {
                 text = "Find",
                 id = "find",
+                font_size = 36,
                 is_enter_default = true,
                 callback = function()
                     local text = dialog:getInputText():match("^%s*(.-)%s*$")
@@ -770,7 +788,8 @@ local function confirmExit()
         modal = true,
         title = "Leave the books and go to the Kindle’s own home screen?",
         title_align = "center",
-        title_face = Font:getFace("infofont", 32),
+        -- ButtonDialog sets its title in info_face unless use_info_style is false.
+        info_face = Font:getFace("infofont", 36),
         buttons = { {
             choice("Cancel", function() UIManager:close(dialog) end),
             choice("Exit to Kindle", function()

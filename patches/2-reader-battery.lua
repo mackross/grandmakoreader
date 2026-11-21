@@ -35,7 +35,7 @@ function ReaderFooter:init()
 end
 
 function ReaderFooter:getHeight()
-    return self.battery_percent and Screen:scaleBySize(52) or 0
+    return self.battery_percent and Screen:scaleBySize(96) or 0
 end
 
 -- Retain KOReader's reading position calculations without exposing its status display.
@@ -58,7 +58,7 @@ function ReaderFooter:paintTo(bb, x, y)
             dimen = Geom:new{ w = width, h = height },
             TextBoxWidget:new{
                 text = string.format("This %s needs to be charged. %d%% battery remaining.", device_name, percent),
-                face = Font:getFace("smalltfont", 18),
+                face = Font:getFace("smalltfont", 28),
                 width = width - 2 * Size.padding.large,
                 alignment = "center",
             },
