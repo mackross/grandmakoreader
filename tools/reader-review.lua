@@ -426,18 +426,39 @@ local function check()
         and top().item_table[1].text == "No books read yet", "Read lately says so before any book is read")
     -- Reading history is a fixture here: three books last open today, yesterday, and twenty days ago.
     local ReadHistory = require("readhistory")
-    local read = { { "Bleak House", 1, "Yesterday" }, { "Emma", 20, "2 weeks ago" }, { "Kidnapped", 0, "Today" } }
+    -- Persuasion names its author, so its row has a second line.
+    local read = { { "Bleak House", 1, "Yesterday" }, { "Emma", 20, "2 weeks ago" }, { "Kidnapped", 0, "Today" },
+        { "Persuasion", 3, "3 days ago", file = "persuasion-austen.fb2" } }
     for _, book in ipairs(read) do
-        book.path = os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. book[1] .. ".txt"
+        book.path = os.getenv("XDG_DOCUMENTS_DIR") .. "/" .. (book.file or book[1] .. ".txt")
         assert(ReadHistory:addItem(book.path, os.time() - book[2] * 86400, true))
     end
+    -- The book being read is the last one opened, and stays in bold however the list is reached.
+    G_reader_settings:saveSetting("lastfile", read[4].path)
     tapBounds(button("Look up a book").dimen)
     tapBounds(button("Read lately").dimen)
     local lately = {}
-    for index, item in ipairs(top().item_table) do lately[index] = item.text .. " " .. item.mandatory end
-    assert(table.concat(lately, "|") == "Kidnapped Today|Bleak House Yesterday|Emma 2 weeks ago",
-        "Read lately lists the books in reading history, newest first")
+    for index, item in ipairs(top().item_table) do lately[index] = item.text .. ": " .. (item.author and item.author .. " · " or "") .. item.when end
+    assert(table.concat(lately, "|")
+        == "Kidnapped: Today|Bleak House: Yesterday|Persuasion: Jane Austen · 3 days ago|Emma: 2 weeks ago",
+        "Read lately lists the books in reading history, newest first, dated on the author's line: "
+        .. table.concat(lately, "|"))
+    assert(top().item_table.current == 3, "the book being read is in bold in Read lately")
     screenshot("01-read-lately")
+    -- Every row takes two lines, so landscape runs onto a second screen, reached by an Older arrow.
+    assert((top().page_num > 1) == landscape, "Read lately runs past one screen only in landscape")
+    if landscape then
+        assert(not top().previous_shelf and top().next_shelf.text == "Older", "the newest books point on to Older")
+        tapBounds(top().next_shelf.dimen)
+        assert(top().view.kind == "recent" and top().page == 2 and top().previous_shelf.text == "Newer"
+            and title() == "Read lately", "Older turns to earlier books, which point back to Newer")
+        screenshot("01-read-lately-older")
+    end
+    tapBounds(button("Look up a book").dimen)
+    tapBounds(button("P").dimen)
+    assert(top().item_table[top().item_table.current].text == "Persuasion",
+        "a letter leaves the bold on the book being read")
+    G_reader_settings:delSetting("lastfile")
     for _, book in ipairs(read) do ReadHistory:removeItemByPath(book.path) end
 
     local function typeName(text)

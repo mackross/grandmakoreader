@@ -251,6 +251,14 @@ function Home:init()
     -- Menu sizes the strip below the list from its page label, so make that label as tall as Find.
     self.page_info_text = wordButton{ show_parent = self, text = "", text_font_size = lookup_font_size, padding_v = 0 }
     Menu.init(self)
+    -- Menu opens at the bold book's shelf. Open at the first, or at the shelf that holds the book a
+    -- letter or a return leads to.
+    local focus = self.item_table.focus
+    local page = focus and self:getPageNumber(focus) or 1
+    if self.page ~= page then
+        self.page = page
+        self:updateItems(1, true)
+    end
     -- The list stays above the bar. The screen as a whole belongs to Home.
     self.dimen.h = Screen:getHeight()
     self[1] = VerticalGroup:new{ align = "left", self[1], bar }
@@ -309,18 +317,15 @@ function Home:_recalculateDimen(no_recalculate_dimen)
     if self.has_find then
         Menu._recalculateDimen(self)
     end
-    -- Read lately is a single screen.
-    if view and view.kind == "recent" and self.page_num > 1 then
-        for index = #self.item_table, #self.page_items[1] + 1, -1 do
-            self.item_table[index] = nil
-        end
-        Menu._recalculateDimen(self)
-    end
 end
 
 -- A shelf's letters, such as "A–L". Like an encyclopedia's spines, an end takes as many letters as
 -- it needs to differ from the neighbouring shelf, as in "S–Sec" beside "Sen–T", up to self.label_letters.
 function Home:shelfLetters(page)
+    -- Read lately runs from the newest book back, so its arrows say which way they go in time.
+    if self.view and self.view.kind == "recent" then
+        return page < self.page and "Newer" or "Older"
+    end
     local function title(page_index, last)
         local shelf = self.page_items[page_index]
         return self.item_table[shelf[last and #shelf or 1]].text
@@ -501,13 +506,20 @@ function Home:buildFind()
 end
 
 -- A book's author goes on a line of its own under the title, in smaller type.
-local function authorLine(author, width)
-    return TextWidget:new{
-        text = author,
-        face = Font:getFace("smallinfofont", 32),
-        max_width = width,
-        fgcolor = Blitbuffer.COLOR_DARK_GRAY,
-    }
+-- In Read lately the line ends with when the book was last open, which stays whole while a long
+-- author's name is shortened.
+local function authorLine(author, width, when)
+    local function words(text, max_width)
+        return TextWidget:new{
+            text = text,
+            face = Font:getFace("smallinfofont", 32),
+            max_width = max_width,
+            fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+        }
+    end
+    if not (author and when) then return words(author or when, width) end
+    local date = words(" · " .. when)
+    return HorizontalGroup:new{ words(author, width and width - date:getSize().w), date }
 end
 
 -- Menu fills each page by the lines of the titles alone. Fill them again, giving each author a line.
@@ -517,7 +529,7 @@ function Home:setupItemHeights()
     local page, height = {}, 0
     self.page_items = {}
     for index, item in ipairs(self.item_table) do
-        if item.author then item.height = item.height + author_height end
+        if item.author or item.when then item.height = item.height + author_height end
         height = height + item.height
         if height > self.available_height and #page > 0 then
             table.insert(self.page_items, page)
@@ -532,12 +544,12 @@ function Home:updateItems(...)
     Menu.updateItems(self, ...)
     -- Menu sets a row's text alone in its place, so set the title over the author there instead.
     for _, row in ipairs(self.item_group) do
-        local author = row.entry and row.entry.author
-        local line = author and row._underline_container[1][1][2][1]
+        local entry = row.entry
+        local line = entry and (entry.author or entry.when) and row._underline_container[1][1][2][1]
         local title = line and line[2]
         -- Only a title Menu wraps over lines has room set aside for it. Leave any other as it is.
         if title and title.width then
-            local author_line = authorLine(author, title.width)
+            local author_line = authorLine(entry.author, title.width, entry.when)
             line[2] = VerticalGroup:new{
                 align = "left",
                 TextBoxWidget:new{
@@ -658,8 +670,8 @@ local function recentBooks(books)
     for _, read in ipairs(ReadHistory.hist) do
         local book = by_path[read.file]
         if book then
-            book.mandatory = readWhen(read.time)
-            book.mandatory_dim = true
+            -- The date goes on the author's line, so the title has the full width.
+            book.when = readWhen(read.time)
             recent[#recent + 1] = book
         end
     end
@@ -685,11 +697,13 @@ local function shelfItems(books, view, focused_file)
     elseif view then
         items, nothing = namedBooks(books, view.text), "No book or author has “" .. view.text .. "” in its name"
     end
+    -- The book being read, the last one opened, stays in bold wherever it shows, however the
+    -- list was reached. The book a letter or a return leads to only picks the shelf.
+    local last_file = G_reader_settings:readSetting("lastfile")
+    last_file = last_file and (ffiUtil.realpath(last_file) or last_file)
     for index, item in ipairs(items) do
-        if item.path == focused_file then
-            items.current = index
-            break
-        end
+        if item.path == focused_file then items.focus = index end
+        if last_file and (ffiUtil.realpath(item.path) or item.path) == last_file then items.current = index end
     end
     if #items == 0 then
         items[1] = { text = nothing, select_enabled = false }
