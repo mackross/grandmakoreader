@@ -221,18 +221,34 @@ local lookup_font_size = 40
 local function wordButton(button)
     local border = Size.border.thick
     button.enabled = button.callback ~= nil
-    button.height = button.height and button.height - 2 * (border + button_margin)
+    button.margin = button.margin or button_margin
+    button.height = button.height and button.height - 2 * (border + button.margin)
     button.padding_v = button.height and 0 or button.padding_v or Screen:scaleBySize(4)
     button.padding_h = Screen:scaleBySize(18)
     button.text_font_size = button.text_font_size or 36
     button.text_font_bold = false
     button.bordersize = border
     button.radius = Screen:scaleBySize(10)
-    button.margin = button_margin
     button = Button:new(button)
     if not button.callback then
         button.frame.color = Blitbuffer.COLOR_GRAY
     end
+    return button
+end
+
+-- The wide button under the list. In landscape the list is short, so the button gives up a little of
+-- its space and margin, enough that two books whose titles take two lines share a shelf.
+local function bottomButton(button)
+    button.text_font_size = lookup_font_size
+    button.padding_v = 0
+    if Screen:getWidth() <= Screen:getHeight() then return wordButton(button) end
+    button.margin = Screen:scaleBySize(4)
+    button.height = Screen:scaleBySize(54) + 2 * button.margin
+    button = wordButton(button)
+    -- The words sit low in their line, which shows in the shorter outline. Lift them to its middle.
+    local lift = Screen:scaleBySize(7)
+    button.label_container.dimen.h = button.label_container.dimen.h - lift
+    button.frame.padding_bottom = lift
     return button
 end
 
@@ -252,7 +268,7 @@ function Home:init()
     local bar = buildPlaceBar(not self.view and self.place, Screen:getWidth())
     self.height = Screen:getHeight() - bar:getSize().h
     -- Menu sizes the strip below the list from its page label, so make that label as tall as Find.
-    self.page_info_text = wordButton{ show_parent = self, text = "", text_font_size = lookup_font_size, padding_v = 0 }
+    self.page_info_text = bottomButton{ show_parent = self, text = "" }
     Menu.init(self)
     -- Menu opens at the bold book's shelf. Open at the first, or at the shelf that holds the book a
     -- letter or a return leads to.
@@ -387,15 +403,13 @@ function Home:updatePageInfo(...)
         page_controls[index] = nil
     end
     page_controls:resetLayout()
-    local inset = Size.padding.fullscreen - button_margin
+    local inset = Size.padding.fullscreen - self.page_info_text.margin
     if self.place == "shop" then
         -- The shop has no rows of its own yet. In the place where the shelf looks books up, it
         -- offers a new one through Z-library.
-        self.new_book_button = self.new_book_button or wordButton{
+        self.new_book_button = self.new_book_button or bottomButton{
             show_parent = self,
             text = "Find a new book",
-            text_font_size = lookup_font_size,
-            padding_v = 0,
             width = self.inner_dimen.w - 2 * inset,
             callback = openZlibrary,
         }
@@ -404,11 +418,9 @@ function Home:updatePageInfo(...)
         page_controls[3] = HorizontalSpan:new{ width = inset }
     elseif self.has_find then
         -- The button spans the bottom of the list, with its outline as wide as the rules under the titles.
-        self.find_button = self.find_button or wordButton{
+        self.find_button = self.find_button or bottomButton{
             show_parent = self,
             text = "Look up a book",
-            text_font_size = lookup_font_size,
-            padding_v = 0,
             width = self.inner_dimen.w - 2 * inset,
             callback = function() showHome("shelf", nil, { kind = "find" }) end,
         }
