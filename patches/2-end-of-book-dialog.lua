@@ -1,6 +1,7 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local CenterContainer = require("ui/widget/container/centercontainer")
+local DataStorage = require("datastorage")
 local Device = require("device")
 local FileManager = require("apps/filemanager/filemanager")
 local Font = require("ui/font")
@@ -233,6 +234,11 @@ end
 function ReaderStatus:onEndOfBook()
     if self.document.file == QuickStart.quickstart_filename then
         return onEndOfBook(self)
+    end
+    -- The instructions are not one of her books, so their end offers no shelf and no throwing away.
+    -- The reading menu's Open another book leads back to the shelf.
+    if self.document.file == DataStorage:getDataDir() .. "/instructions/Instructions.epub" then
+        return true
     end
     -- Find a place stays open while pages turn; put it away so the note is not drawn under it.
     if self.ui.reading_controls then

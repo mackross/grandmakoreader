@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Builds patches/instructions/Instructions.epub from tools/instructions/.
+
+The zip is deterministic, so rebuilding unchanged sources leaves the file, and the Kindle's
+copy, as it is. Run this after editing the sources and commit both."""
+import pathlib
+import zipfile
+
+root = pathlib.Path(__file__).resolve().parent.parent
+source = root / "tools" / "instructions"
+target = root / "patches" / "instructions" / "Instructions.epub"
+target.parent.mkdir(parents=True, exist_ok=True)
+
+
+def add(archive, path, compress):
+    info = zipfile.ZipInfo(path.relative_to(source).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED if compress else zipfile.ZIP_STORED
+    info.external_attr = 0o644 << 16
+    archive.writestr(info, path.read_bytes())
+
+
+with zipfile.ZipFile(target, "w") as archive:
+    # EPUB requires the uncompressed mimetype entry first.
+    add(archive, source / "mimetype", False)
+    for path in sorted(source.rglob("*")):
+        if path.is_file() and path.name != "mimetype":
+            add(archive, path, True)
+print(target.relative_to(root))

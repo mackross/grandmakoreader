@@ -138,8 +138,13 @@ local function watchSettings()
     local top = UIManager:getTopmostVisibleWidget()
     local said = "(another screen)"
     if top and top.place == "settings" and not top.view then
-        local message = top.item_table[2]
-        said = message.select_enabled == false and message.text or ""
+        -- The row under Check for updates says how the check went, when it is not a button.
+        for index, item in ipairs(top.item_table) do
+            if item.text == "Check for updates" then
+                local message = top.item_table[index + 1]
+                said = message.select_enabled == false and message.text or ""
+            end
+        end
     end
     if said ~= last_said then
         last_said = said
@@ -155,8 +160,11 @@ function actions.check(seconds)
     wait(1)
     watchSettings()
     top = UIManager:getTopmostVisibleWidget()
-    assert(top.item_table[1].text == "Check for updates")
-    top:onMenuSelect(top.item_table[1])
+    local chosen
+    for _, item in ipairs(top.item_table) do
+        if item.text == "Check for updates" then chosen = item end
+    end
+    top:onMenuSelect(assert(chosen, "Settings has Check for updates"))
     if seconds ~= "" then actions.quit(seconds) end
 end
 

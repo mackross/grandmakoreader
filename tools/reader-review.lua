@@ -233,7 +233,7 @@ local function check()
     end
     local function ready() return not select(2, row("Check for updates")).dim end
     local function settings(message) -- the rows Settings should show, with this under Check for updates
-        return "Check for updates|" .. (message and message .. "|" or "") .. "Advanced"
+        return "Instructions|Check for updates|" .. (message and message .. "|" or "") .. "Advanced"
     end
     -- The updater is switched off in this run, so a stand-in plays its part.
     assert(rows() == settings("Updates are switched off on this Kindle.") and not ready(),
@@ -247,7 +247,7 @@ local function check()
         callback("connecting")
     end }
     refresh()
-    assert(rows() == settings() and ready(), "Settings offers Check for updates and Advanced")
+    assert(rows() == settings() and ready(), "Settings offers Instructions, Check for updates, and Advanced")
     screenshot("01-settings")
     tapBounds(row("Check for updates").dimen)
     assert(asked == 1 and rows() == settings("Looking for the Wi‑Fi… this might take a minute."), "a tap starts a check")
@@ -347,6 +347,23 @@ local function check()
     assert(top().title == "Advanced" and not button("Cancel"), "Cancel stays in Advanced")
     assert(place(3).place == "settings" and not top().view, "the Settings button returns from Advanced")
     refresh()
+
+    -- Instructions opens the book that ships in patches/instructions, from a copy outside the patches folder.
+    tapBounds(row("Instructions").dimen)
+    wait(3.2) -- Allow the fresh-profile book cache notice to clear.
+    local guide = assert(ReaderUI.instance, "Instructions opens a book")
+    assert(guide.document.file:find("/instructions/Instructions%.epub$")
+        and not guide.document.file:find("/patches/", 1, true), "the instructions open from a copy outside the patches")
+    screenshot("01-instructions")
+    guide.gotopage:onGoToEnd()
+    wait(0.27)
+    turnPage(true)
+    assert(top().name ~= "end_document" and ReaderUI.instance == guide, "the end of the instructions asks nothing")
+    tap(width / 2, height / 2)
+    local guide_menu = assert(guide.reading_controls, "a tap opens the reading menu in the instructions")
+    tap(guide_menu.bounds.x + guide_menu.bounds.w / 2, guide_menu.bounds.h * 4.5 / 5)
+    wait(0.4)
+    assert(top().name == "books_home" and not ReaderUI.instance, "Open another book leaves the instructions")
     assert(place(2).place == "shelf" and #top().item_table == 2, "the centre button returns to the shelf")
 
     -- Fourteen more titles make more than one shelf. Library order ignores a leading "The", "A", or "An".
@@ -547,7 +564,37 @@ local function check()
     shelf(1, "Book Shelf returns from Find to the first shelf")
     print("PASS find: letters, Read lately, typed name or author, return to the shelf")
 
-    for _, extra in ipairs(extras) do assert(os.remove(extra)) end
+    -- Holding a book on the second shelf for four seconds offers to throw it away. A shorter hold does
+    -- nothing. Cancel keeps it; the shelf stays put after it goes.
+    local function hold(bounds, seconds)
+        waitForInput()
+        touch("SDL_EVENT_FINGER_DOWN", bounds.x + bounds.w / 2, bounds.y + bounds.h / 2)
+        wait(seconds or 4.2)
+        touch("SDL_EVENT_FINGER_UP", bounds.x + bounds.w / 2, bounds.y + bounds.h / 2)
+        wait(0.27)
+    end
+    tapBounds(top().next_shelf.dimen)
+    local held, after_held = top().item_table[top().page_items[2][1]], top().item_table[top().page_items[2][2]]
+    hold(top().layout[1][1][1].dimen, 3.5)
+    wait(1)
+    shelf(2, "a hold let go before four seconds does nothing")
+    assert(not ReaderUI.instance, "a hold does not open the book")
+    hold(top().layout[1][1][1].dimen)
+    assert(top().name == "throw_away" and top().title:find("“" .. held.text .. "”", 1, true)
+        and not ReaderUI.instance, "holding a book asks whether to throw it away without opening it")
+    screenshot("01-throw-away")
+    tapBounds(button("Cancel").dimen)
+    shelf(2, "Cancel leaves the book on its shelf")
+    assert(lfs.attributes(held.path, "mode") == "file", "Cancel keeps the book")
+    hold(top().layout[1][1][1].dimen)
+    tapBounds(button("Yes, it's rubbish").dimen)
+    assert(top().name == "books_home" and not top().view and top().page == 2 and #top().item_table == 15
+        and top().item_table[top().page_items[2][1]].text == after_held.text and not lfs.attributes(held.path),
+        "Yes, it's rubbish removes the book and keeps its shelf open")
+    screenshot("01-thrown-away")
+    print("PASS throw away: a short hold does nothing, a four-second hold asks, Cancel keeps it, confirmation removes it and stays on its shelf")
+
+    for _, extra in ipairs(extras) do assert(extra == held.path or os.remove(extra)) end
     UIManager:broadcastEvent(Event:new("NotCharging"))
     wait(0.15)
     assert(#top().item_table == 2 and top().page_num == 1 and not top().shelf_arrows

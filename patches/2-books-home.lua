@@ -29,6 +29,7 @@ local TitleBar = require("ui/widget/titlebar")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
+local time = require("ui/time")
 local ffiUtil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
@@ -264,6 +265,8 @@ function Home:init()
     -- The list stays above the bar. The screen as a whole belongs to Home.
     self.dimen.h = Screen:getHeight()
     self[1] = VerticalGroup:new{ align = "left", self[1], bar }
+    -- A finger lifted anywhere ends a hold on a book before it counts.
+    self.ges_events.HoldLifted = { GestureRange:new{ ges = "hold_release", range = self.dimen } }
 end
 
 function Home:onShowingReader()
@@ -271,6 +274,7 @@ function Home:onShowingReader()
 end
 
 function Home:onCloseWidget()
+    self:onHoldLifted()
     if self.name_dialog then
         UIManager:close(self.name_dialog)
     end
@@ -679,6 +683,60 @@ function Home:typeName()
     dialog:onShowKeyboard()
 end
 
+-- Holding a book for four seconds offers to throw it away, so a short press does nothing. KOReader
+-- reports a hold after half a second; the rest is timed here and dropped when the finger lifts.
+local throw_away_hold_seconds = 4
+
+function Home:onMenuHold(item)
+    if not item.path then return true end
+    self:onHoldLifted()
+    self.pending_hold = function()
+        self.pending_hold = nil
+        self:askThrowAway(item)
+    end
+    local reported = time.to_s(Device.input.gesture_detector.ges_hold_interval)
+    UIManager:scheduleIn(math.max(0, throw_away_hold_seconds - reported), self.pending_hold)
+    return true
+end
+
+function Home:onHoldLifted()
+    if self.pending_hold then
+        UIManager:unschedule(self.pending_hold)
+        self.pending_hold = nil
+    end
+end
+
+-- Asks whether to throw a book away, with the end-of-book dialog's wording. After the book goes,
+-- the list reopens on the book beside it.
+function Home:askThrowAway(item)
+    local device_name = os.getenv("KO_DEV_DEVICE_NAME") or (Device:isKindle() and "Kindle" or "device")
+    local dialog
+    local function choice(text, callback)
+        return { text = text, font_size = 36, callback = callback }
+    end
+    dialog = ButtonDialog:new{
+        name = "throw_away",
+        modal = true,
+        title = "Throw away “" .. item.text .. "”?\n\nThis removes the book from this " .. device_name .. ".",
+        title_align = "center",
+        -- ButtonDialog sets its title in info_face unless use_info_style is false.
+        info_face = Font:getFace("infofont", 36),
+        buttons = { {
+            choice("Cancel", function() UIManager:close(dialog) end),
+            choice("Yes, it's rubbish", function()
+                UIManager:close(dialog)
+                local index = util.arrayContains(self.item_table, item)
+                local beside = self.item_table[index + 1] or self.item_table[index - 1]
+                if FileManager:deleteFile(item.path, true) then
+                    showHome(self.place, beside and beside.path, self.view)
+                end
+            end),
+        } },
+    }
+    UIManager:show(dialog)
+    return true
+end
+
 -- Menu wraps from the last page to the first. The shelves stop at both ends, like the buttons.
 function Home:onNextPage()
     return self.page >= self.page_num or self:onGotoPage(self.page + 1)
@@ -826,6 +884,39 @@ local function updateReported(state, reason)
     end
 end
 
+-- Instructions is a book that ships with the patches. KOReader keeps a book's place in a folder
+-- beside it, and the updater counts every file in the patches folder, so the reader opens a copy
+-- in KOReader's own folder, refreshed whenever an update changes the book.
+local instructions_book = patch_dir .. "instructions/Instructions.epub"
+local instructions_copy = DataStorage:getDataDir() .. "/instructions/Instructions.epub"
+
+local function readFile(path)
+    local file = io.open(path, "rb")
+    if not file then return nil end
+    local content = file:read("*a")
+    file:close()
+    return content
+end
+
+local function openInstructions()
+    local content = readFile(instructions_book)
+    if not content then
+        logger.err("Instructions: no book at", instructions_book)
+        return
+    end
+    if readFile(instructions_copy) ~= content then
+        util.makePath(instructions_copy:match("^(.*)/"))
+        local file = io.open(instructions_copy, "wb")
+        if not file then
+            logger.err("Instructions: could not copy the book to", instructions_copy)
+            return
+        end
+        file:write(content)
+        file:close()
+    end
+    ReaderUI:showReader(instructions_copy)
+end
+
 -- The rows of Settings, or of Advanced within it. The Report a problem screen has none.
 function settingsItems(view)
     if view and view.kind == "report" then return {} end
@@ -841,7 +932,7 @@ function settingsItems(view)
     local message = Update and update_messages[update_state]
     if not Update then message = "Updates are switched off on this Kindle." end
     -- The row is greyed out while a check runs. Under it, a row that is not a button says how the check went.
-    local items = { {
+    local items = { { text = "Instructions", callback = openInstructions }, {
         text = "Check for updates",
         dim = not ready,
         select_enabled = ready,
@@ -853,7 +944,7 @@ function settingsItems(view)
         end,
     } }
     if message then
-        items[2] = { text = message, select_enabled = false }
+        items[#items + 1] = { text = message, select_enabled = false }
     end
     items[#items + 1] = { text = "Advanced", callback = function() showHome("settings", nil, { kind = "advanced" }) end }
     return items
