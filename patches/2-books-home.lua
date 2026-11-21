@@ -324,6 +324,11 @@ end
 Home.onNotCharging = Home.refresh
 Home.onResume = Home.refresh
 
+-- Plugging in changes what the Settings title says about the battery.
+function Home:onCharging()
+    if self.place == "settings" then self:refresh() end
+end
+
 -- The shelf arrows live in the title bar, so the list runs down to the bar unless Find needs the
 -- strip below it. Menu reserves that strip only while it has a return arrow.
 function Home:_recalculateDimen(no_recalculate_dimen)
@@ -892,7 +897,7 @@ local settingsItems
 local function updateReported(state, reason)
     update_state = state == "no wifi" and reason or state
     if home and home.place == "settings" and not home.view then
-        home:switchItemTable(nil, settingsItems())
+        showHome("settings")
     end
 end
 
@@ -958,6 +963,25 @@ function settingsItems(view)
     if message then
         items[#items + 1] = { text = message, select_enabled = false }
     end
+    -- Airplane mode is the Wi-Fi module's day off: every need, updates included, waits until it
+    -- lifts by itself or is tapped off. Without the module there is no radio to switch.
+    local Wifi = package.loaded["grandma/wifi"]
+    if Wifi then
+        local text = "Airplane mode: Off"
+        local until_time = Wifi:offUntil()
+        if until_time then
+            local day = os.date("%Y%m%d", until_time) == os.date("%Y%m%d") and "today" or "tomorrow"
+            text = "Airplane mode: On until " .. os.date("%I:%M %p", until_time):gsub("^0", ""):lower() .. " " .. day
+        end
+        items[#items + 1] = {
+            text = text,
+            callback = function()
+                -- The row acts on what it shows, even if the day off ended while Settings was open.
+                Wifi:setOff(until_time == nil)
+                showHome("settings")
+            end,
+        }
+    end
     items[#items + 1] = { text = "Advanced", callback = function() showHome("settings", nil, { kind = "advanced" }) end }
     return items
 end
@@ -980,6 +1004,11 @@ function showHome(place_id, focused_file, view)
     for _, place in ipairs(places) do
         if place.id == place_id then title = place.title end
     end
+    -- Settings names the battery level in its title, and says so while the Kindle charges.
+    if place_id == "settings" and not view and Device:hasBattery() then
+        local power = Device:getPowerDevice()
+        title = string.format("Settings · %s %d%%", power:isCharging() and "Charging" or "Battery", power:getCapacity())
+    end
     local finding = view and view.kind == "find"
     if view then
         title = finding and "Look up a book" or view.kind == "recent" and "Read lately"
@@ -1001,26 +1030,34 @@ function showHome(place_id, focused_file, view)
         end)
     end
     Device.screen:setWindowTitle("Books")
-    home = Home:new{
-        place = place_id,
-        view = view,
-        title = title,
-        custom_title_bar = TitleBar:new{
-            width = Device.screen:getWidth(),
+    -- Settings has no shelves to page through, so its rows shrink until they fit on one page, as
+    -- a long message about a check may need in landscape.
+    local font_size = Home.items_font_size
+    repeat
+        home = Home:new{
+            place = place_id,
+            view = view,
             title = title,
-            title_face = Font:getFace("smalltfont", 40),
-            title_top_padding = Screen:scaleBySize(8),
-            with_bottom_line = true,
-        },
-        books = books,
-        -- What Settings says about a check may take more lines than a title on the shelf is given.
-        items_max_lines = place_id == "settings" and 4 or nil,
-        -- The shop holds no rows of its own yet; its Find a new book button opens Z-library.
-        item_table = place_id == "settings" and settingsItems(view)
-            or not books and {}
-            or finding and {} or shelfItems(books, view, focused_file),
-    }
-    UIManager:show(home, "full")
+            custom_title_bar = TitleBar:new{
+                width = Device.screen:getWidth(),
+                title = title,
+                title_face = Font:getFace("smalltfont", 40),
+                title_top_padding = Screen:scaleBySize(8),
+                with_bottom_line = true,
+            },
+            books = books,
+            -- What Settings says about a check may take more lines than a title on the shelf is given.
+            items_max_lines = place_id == "settings" and 4 or nil,
+            items_font_size = font_size,
+            -- The shop holds no rows of its own yet; its Find a new book button opens Z-library.
+            item_table = place_id == "settings" and settingsItems(view)
+                or not books and {}
+                or finding and {} or shelfItems(books, view, focused_file),
+        }
+        font_size = font_size - 4
+    until place_id ~= "settings" or home.page_num <= 1 or font_size < 28
+    -- A change within Settings, such as news of a check, redraws without a full e-ink flash.
+    UIManager:show(home, stays_in_settings and not view and "ui" or "full")
 end
 
 function FileManager:showFiles(_, focused_file)

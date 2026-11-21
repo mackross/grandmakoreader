@@ -13,6 +13,8 @@
 --   "ended"       the need ended before the connection
 -- Wi-Fi turns off a grace period after the last need.
 --
+-- Settings' Airplane mode is setOff, for off_seconds (a day); offUntil says when it lifts.
+--
 -- Wifi:report(reached) records whether a request reached the internet, for the settings line;
 -- an unreachable connection records false. Wifi:hasProblem() reads it back.
 local Device = require("device")
@@ -45,6 +47,11 @@ end
 
 function Wifi:isOff()
     return (G_reader_settings:readSetting("grandma_wifi_off_until") or 0) > clock()
+end
+
+-- When Wi-Fi turned off with setOff comes back on, as seconds since the epoch, or nil when it is not off.
+function Wifi:offUntil()
+    return self:isOff() and G_reader_settings:readSetting("grandma_wifi_off_until") or nil
 end
 
 -- Blocks every need, including updates, for off_seconds; false ends it early.
@@ -95,6 +102,7 @@ end
 function Wifi:stop(reason)
     self.needs = {}
     self.turning_on = nil
+    self.settling_until = nil
     self.idle_since = nil
     local waiting = self.waiting
     self.waiting = {}
@@ -159,8 +167,14 @@ function Wifi:update()
             end
         end
     else
-        self.turning_on = nil
+        -- On a Kindle the radio comes up a while after it is asked to, so a radio asked for by needs
+        -- that have since ended is watched for, and turned off when it arrives.
+        if self.turning_on then
+            self.settling_until = current + self.connect_timeout
+            self.turning_on = nil
+        end
         if NetworkMgr:isWifiOn() then
+            self.settling_until = nil
             self.idle_since = self.idle_since or current
             if off or current - self.idle_since >= self.grace then
                 self.idle_since = nil
@@ -170,6 +184,11 @@ function Wifi:update()
             end
         else
             self.idle_since = nil
+            if self.settling_until and self.settling_until > current then
+                checkAt(current + self.poll)
+            else
+                self.settling_until = nil
+            end
         end
     end
 

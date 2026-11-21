@@ -15,7 +15,8 @@ Status: the need tracking in [`patches/2-wifi.lua`](../../../../patches/2-wifi.l
 - `wifi-connect-failure` answers `false` with `"unreachable"` when a need has waited 60 seconds without a connection, and ends that need. Each need has its own 60 seconds, so a failing background attempt does not shorten the book store's wait. Nothing is shown on screen.
 - `wifi-problem-report` remembers whether the last request reached the internet. An unreachable connection records a problem, and the updater or store reports each request's result with `Wifi:report(reached)`. Settings reads `Wifi:hasProblem()`.
 - `wifi-sleep` ends every need when the Kindle sleeps. Tasks swap files atomically, so an interrupted download leaves nothing behind.
-- `wifi-off-setting` refuses every need, including updates, for 24 hours after `Wifi:setOff(true)`, then lifts by itself. The time survives restarts. It has no screen yet.
+- `wifi-off-setting` refuses every need, including updates, for 24 hours after `Wifi:setOff(true)`, then lifts by itself. The time survives restarts. Turning it on ends the needs already running and turns the radio off.
+- `wifi-airplane-mode` is the off setting's row in Settings. It reads **Airplane mode: Off**; a tap turns Wi‑Fi off for 24 hours and the row reads **Airplane mode: On until 9:12 am tomorrow** (`today` once the day has turned). Another tap turns it off early.
 - `wifi-store-status` (planned) shows a message while the book store connects or cannot connect.
 - `wifi-settings-problem` (planned) shows in settings when Wi‑Fi has not been working.
 - `wifi-setup-network` (planned) lists networks in the setup area, asks for a password, and can forget a network.
@@ -23,6 +24,7 @@ Status: the need tracking in [`patches/2-wifi.lua`](../../../../patches/2-wifi.l
 ## How to get to it (user POV)
 
 - Automatic: nothing to do. Updates connect and disconnect without any sign.
+- Airplane mode: tap **Settings**, then **Airplane mode: Off**. Tap the row again to end it early.
 - Book store (planned): opening the store connects and shows a message only if that takes a while or fails.
 - Setup (planned): set up for the family member, not the reader.
 
@@ -46,7 +48,7 @@ Wifi:release("book-store")
 
 Preconditions: the doctor passes. The simulator's fake network manager connects as soon as the radio turns on and cannot scan.
 
-- Run `tools/review-koreader "$evidence"`. The portrait run shortens the timers and checks the takeover, overlapping needs, the grace period, extension, timeout, forced connection failures with separate timeouts, the problem report, and the off setting. It prints `PASS wifi`. Both orientations register a need before **Stop for now** and check that sleep ends it and turns the radio off.
+- Run `tools/review-koreader "$evidence"`. The portrait run shortens the timers and checks the takeover, overlapping needs, the grace period, extension, timeout, forced connection failures with separate timeouts, the problem report, and the off setting. It prints `PASS wifi`. The Settings part of the run, in both orientations, turns Airplane mode on and off from its row; see `01-settings-airplane-mode.png`. Both orientations register a need before **Stop for now** and check that sleep ends it and turns the radio off.
 - The planned screens need fake scan results in the review harness, because the simulator cannot scan.
 
 ## Device-only checks
@@ -68,6 +70,8 @@ Preconditions: the doctor passes. The simulator's fake network manager connects 
 | Book store, dismiss | OK |
 | Settings, problem | The Kindle can’t reach the internet. |
 | Settings, fine | The Kindle is connected to the internet when it needs to be. |
+| Settings, Airplane mode off (draft) | Airplane mode: Off |
+| Settings, Airplane mode on (draft) | Airplane mode: On until %1 %2 (`9:12 am`, `today` or `tomorrow`) |
 | Setup, title | Wi‑Fi |
 | Setup, looking | Looking for Wi‑Fi networks… |
 | Setup, none found | No Wi‑Fi networks found. |

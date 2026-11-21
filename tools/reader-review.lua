@@ -15,6 +15,8 @@ local power = Device:getPowerDevice()
 local battery = 75
 Device.hasBattery = function() return true end
 power.getCapacity = function() return battery end
+local charging = false
+power.isCharging = function() return charging end
 
 local function resume(thread)
     local ok, message = coroutine.resume(thread)
@@ -156,6 +158,20 @@ local function checkWifi()
     wait(0.2)
     assert(answers.blocked == "off" and not on(), "the off setting refuses every need")
     Wifi:setOff(false)
+    -- A Kindle's radio comes up a while after it is asked to. One that arrives after its needs ended,
+    -- here because Wi-Fi was turned off, is turned off when it does.
+    local radio, simulator = false, { NetworkMgr.turnOnWifi, NetworkMgr.isWifiOn, NetworkMgr.disableWifi }
+    NetworkMgr.turnOnWifi = function() end
+    NetworkMgr.isWifiOn = function() return radio end
+    NetworkMgr.disableWifi = function() radio = false end
+    Wifi:need("slow", 5)
+    wait(0.2)
+    Wifi:setOff(true)
+    radio = true
+    wait(0.3)
+    assert(not radio, "a radio that comes up after Wi-Fi is turned off is turned off")
+    NetworkMgr.turnOnWifi, NetworkMgr.isWifiOn, NetworkMgr.disableWifi = unpack(simulator)
+    Wifi:setOff(false)
     Wifi.off_seconds = 0.3
     Wifi:setOff(true)
     wait(0.4)
@@ -213,7 +229,7 @@ local function check()
     assert(place(1).place == "shop" and top().title == "Book Shop", "the left button opens the Book Shop")
     assert(button("Find a new book"), "the Book Shop offers Find a new book where the shelf looks books up")
     screenshot("01-book-shop")
-    assert(place(3).place == "settings" and top().title == "Settings", "the right button opens Settings")
+    assert(place(3).place == "settings" and top().title == "Settings · Battery 75%", "the right button opens Settings, with the battery in its title")
     -- The rows on show from top to bottom, and the row with this text.
     local function rows()
         local texts = {}
@@ -232,8 +248,9 @@ local function check()
         assert(top().place == "settings", "a refresh stays on the open place")
     end
     local function ready() return not select(2, row("Check for updates")).dim end
-    local function settings(message) -- the rows Settings should show, with this under Check for updates
-        return "Instructions|Check for updates|" .. (message and message .. "|" or "") .. "Advanced"
+    local function settings(message, airplane) -- the rows Settings should show, with this under Check for updates
+        return "Instructions|Check for updates|" .. (message and message .. "|" or "") .. (airplane or "Airplane mode: Off|")
+            .. "Advanced"
     end
     -- The updater is switched off in this run, so a stand-in plays its part.
     assert(rows() == settings("Updates are switched off on this Kindle.") and not ready(),
@@ -286,6 +303,36 @@ local function check()
     assert(rows() == settings("Updates aren’t working right now. Please try again later."),
         "a check that cannot start says so")
     package.loaded["grandma/update"] = nil
+    refresh()
+
+    -- Airplane mode turns Wi-Fi off for a day, and a second tap turns it back on.
+    Wifi.off_seconds = 24 * 60 * 60
+    tapBounds(row("Airplane mode: Off").dimen)
+    local back = Wifi:offUntil()
+    assert(back and math.abs(back - os.time() - Wifi.off_seconds) < 5, "Airplane mode lasts a day")
+    local airplane_on = "Airplane mode: On until " .. os.date("%I:%M %p", back):gsub("^0", ""):lower() .. " tomorrow"
+    assert(Wifi:isOff() and rows() == settings("Updates are switched off on this Kindle.", airplane_on .. "|"),
+        "Airplane mode turns Wi-Fi off until this time tomorrow")
+    screenshot("01-settings-airplane-mode")
+    -- The longest message about a check still leaves every row on one page.
+    package.loaded["grandma/update"] = { check = function(_, callback) callback("no wifi", "unreachable") end }
+    refresh()
+    tapBounds(row("Check for updates").dimen)
+    assert(rows() == settings("The Kindle couldn’t find the Wi‑Fi. Check the internet is on at home, then try again.",
+        airplane_on .. "|") and top().page_num == 1, "Settings keeps every row on one page")
+    screenshot("01-settings-crowded")
+    package.loaded["grandma/update"] = nil
+    refresh()
+    assert(Wifi:isOff() and select(2, row(airplane_on)), "a refresh keeps Airplane mode on")
+    tapBounds(row(airplane_on).dimen)
+    assert(not Wifi:isOff() and rows() == settings("Updates are switched off on this Kindle."),
+        "a second tap turns Airplane mode off")
+    charging = true
+    UIManager:broadcastEvent(Event:new("Charging"))
+    wait(0.15)
+    assert(top().place == "settings" and top().title == "Settings · Charging 75%", "plugging in shows the battery charging")
+    screenshot("01-settings-charging")
+    charging = false
     refresh()
 
     local function advanced()
